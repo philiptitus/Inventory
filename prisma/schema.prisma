@@ -1,0 +1,77 @@
+// Prisma schema for SQLite development
+// Switch provider/url for production (Postgres, MySQL, etc.)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Item {
+  id          Int      @id @default(autoincrement())
+  pname       String  // Item name
+  serialno    String  // Serial number
+  model       String  // Model name/id (could be relation in future)
+  category    String  // Category name/id (could be relation in future)
+  county      String  // County name/id (could be relation in future)
+}
+
+model Category {
+  id            Int     @id @default(autoincrement())
+  category_name String
+  status        Boolean
+}
+
+model County {
+  id            Int     @id @default(autoincrement())
+  county_name   String
+  county_number Int
+}
+
+model Member {
+  id             Int     @id @default(autoincrement())
+  payroll_no     String
+  member_name    String
+  department     String  // Department name/id (could be relation in future)
+  office_location String
+  county         String  // County name/id (could be relation in future)
+}
+
+model Department {
+  id       Int    @id @default(autoincrement())
+  Dep_ID   Int    // Department ID
+  Dep_name String // Department name
+}
+
+model Allocation {
+  id             Int     @id @default(autoincrement())
+  ID_PF_No       String  // Member Payroll/ID Number
+  Member_Name    String
+  Department     String
+  Office_Location String
+  County         String
+  Item_Serial_No String
+  Category       String
+  Model          String
+  Item_Name      String
+  Date_Allocated String
+  Message        String?
+}
+
+model Model {
+  id         Int      @id @default(autoincrement())
+  model_name String
+  status     Boolean
+
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  name     String
+  email    String @unique
+  password String
+  phone    String
+}
