@@ -17,12 +17,13 @@ model Item {
   model       String  // Model name/id (could be relation in future)
   category    String  // Category name/id (could be relation in future)
   county      String  // County name/id (could be relation in future)
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model Category {
   id            Int     @id @default(autoincrement())
   category_name String
-  status        Boolean
 }
 
 model County {
@@ -31,19 +32,12 @@ model County {
   county_number Int
 }
 
-model Member {
-  id             Int     @id @default(autoincrement())
-  payroll_no     String
-  member_name    String
-  department     String  // Department name/id (could be relation in future)
-  office_location String
-  county         String  // County name/id (could be relation in future)
-}
 
 model Department {
-  id       Int    @id @default(autoincrement())
-  Dep_ID   Int    // Department ID
-  Dep_name String // Department name
+  id         Int     @id @default(autoincrement())
+  Dep_ID     Int     // Department ID
+  Dep_name   String  // Department name
+  users      User[]
 }
 
 model Allocation {
@@ -64,14 +58,17 @@ model Allocation {
 model Model {
   id         Int      @id @default(autoincrement())
   model_name String
-  status     Boolean
-
 }
 
 model User {
-  id       Int    @id @default(autoincrement())
-  name     String
-  email    String @unique
-  password String
-  phone    String
+  id           Int         @id @default(autoincrement())
+  name         String
+  email        String      @unique
+  password     String
+  phone        String
+  isAdmin      Boolean     @default(false)
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  county       String
+  items        Item[]
 }
