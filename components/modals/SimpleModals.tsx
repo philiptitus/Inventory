@@ -13,13 +13,15 @@ import type { Category, County, Model, Department } from "../../types/inventory"
 interface CategoryModalProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (category: Omit<Category, "id">) => void
-  onUpdate: (id: number, category: Omit<Category, "id">) => void
+  onSave: (category: Omit<Category, "id">, id?: number) => Promise<void> | void
   category?: Category
+  loading?: boolean
+  error?: string
 }
 
-export function CategoryModal({ isOpen, onClose, onSave, onUpdate, category }: CategoryModalProps) {
+export function CategoryModal({ isOpen, onClose, onSave, category, loading, error }: CategoryModalProps) {
   const [categoryName, setCategoryName] = useState("")
+  const [localError, setLocalError] = useState<string | null>(null)
 
   useEffect(() => {
     if (category) {
@@ -27,17 +29,34 @@ export function CategoryModal({ isOpen, onClose, onSave, onUpdate, category }: C
     } else {
       setCategoryName("")
     }
+    setLocalError(null)
   }, [category, isOpen])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const categoryData = { category_name: categoryName, status: 1 }
-    if (category) {
-      onUpdate(category.id, categoryData)
-    } else {
-      onSave(categoryData)
+    if (!categoryName.trim()) {
+      setLocalError("Category name is required")
+      return
     }
-    onClose()
+    setLocalError(null)
+    try {
+      if (category) {
+        // Edit
+        const result = onSave({ category_name: categoryName, status: 1 }, category.id)
+        if (result && typeof result.then === "function") {
+          await result
+        }
+      } else {
+        // Add
+        const result = onSave({ category_name: categoryName, status: 1 })
+        if (result && typeof result.then === "function") {
+          await result
+        }
+      }
+      onClose()
+    } catch (err) {
+      // Parent handles error and keeps modal open
+    }
   }
 
   return (
@@ -49,13 +68,16 @@ export function CategoryModal({ isOpen, onClose, onSave, onUpdate, category }: C
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label htmlFor="category_name">Category Name</Label>
-            <Input id="category_name" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} required />
+            <Input id="category_name" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} required disabled={loading} />
           </div>
+          {(localError || error) && <div className="text-red-600 text-sm">{localError || error}</div>}
           <div className="flex justify-end space-x-2">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit">{category ? "Update" : "Add"} Category</Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? <span className="flex items-center"><span className="animate-spin mr-2 w-4 h-4 border-2 border-t-2 border-gray-200 border-t-red-500 rounded-full"></span>{category ? "Updating..." : "Adding..."}</span> : (category ? "Update" : "Add") + " Category"}
+            </Button>
           </div>
         </form>
       </DialogContent>
@@ -67,8 +89,8 @@ export function CategoryModal({ isOpen, onClose, onSave, onUpdate, category }: C
 interface CountyModalProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (county: Omit<County, "id">) => void
-  onUpdate: (id: number, county: Omit<County, "id">) => void
+  onSave: (county: Omit<County, "id">) => Promise<void> | void
+  onUpdate?: (id: number, county: Omit<County, "id">) => Promise<void> | void
   county?: County
 }
 
@@ -77,19 +99,22 @@ export function CountyModal({ isOpen, onClose, onSave, onUpdate, county }: Count
 
   useEffect(() => {
     if (county) {
-      setFormData({ county_name: county.county_name, county_number: county.county_number.toString() })
+      setFormData({
+        county_name: county.county_name,
+        county_number: county.county_number !== undefined && county.county_number !== null ? county.county_number.toString() : ""
+      })
     } else {
       setFormData({ county_name: "", county_number: "" })
     }
   }, [county, isOpen])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const countyData = { county_name: formData.county_name, county_number: Number.parseInt(formData.county_number) }
-    if (county) {
-      onUpdate(county.id, countyData)
+    if (county && onUpdate) {
+      await onUpdate(county.id, countyData)
     } else {
-      onSave(countyData)
+      await onSave(countyData)
     }
     onClose()
   }
@@ -190,13 +215,16 @@ export function ModelModal({ isOpen, onClose, onSave, onUpdate, model }: ModelMo
 interface DepartmentModalProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (department: Omit<Department, "id">) => void
-  onUpdate: (id: number, department: Omit<Department, "id">) => void
+  onSave: (department: Omit<Department, "id">) => Promise<void> | void
+  onUpdate?: (id: number, department: Omit<Department, "id">) => Promise<void> | void
   department?: Department
+  loading?: boolean
+  error?: string
 }
 
-export function DepartmentModal({ isOpen, onClose, onSave, onUpdate, department }: DepartmentModalProps) {
+export function DepartmentModal({ isOpen, onClose, onSave, onUpdate, department, loading, error }: DepartmentModalProps) {
   const [formData, setFormData] = useState({ Dep_ID: "", Dep_name: "" })
+  const [localError, setLocalError] = useState<string | null>(null)
 
   useEffect(() => {
     if (department) {
@@ -204,16 +232,32 @@ export function DepartmentModal({ isOpen, onClose, onSave, onUpdate, department 
     } else {
       setFormData({ Dep_ID: "", Dep_name: "" })
     }
+    setLocalError(null)
   }, [department, isOpen])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (department) {
-      onUpdate(department.id, formData)
-    } else {
-      onSave(formData)
+    if (!formData.Dep_ID.trim() || !formData.Dep_name.trim()) {
+      setLocalError("Both fields are required")
+      return
     }
-    onClose()
+    setLocalError(null)
+    try {
+      if (department && onUpdate) {
+        const result = onUpdate(department.id, formData)
+        if (result && typeof result.then === "function") {
+          await result
+        }
+      } else {
+        const result = onSave(formData)
+        if (result && typeof result.then === "function") {
+          await result
+        }
+      }
+      onClose()
+    } catch (err) {
+      // Parent handles error and keeps modal open
+    }
   }
 
   return (
@@ -230,6 +274,7 @@ export function DepartmentModal({ isOpen, onClose, onSave, onUpdate, department 
               value={formData.Dep_ID}
               onChange={(e) => setFormData({ ...formData, Dep_ID: e.target.value })}
               required
+              disabled={loading}
             />
           </div>
           <div>
@@ -239,13 +284,17 @@ export function DepartmentModal({ isOpen, onClose, onSave, onUpdate, department 
               value={formData.Dep_name}
               onChange={(e) => setFormData({ ...formData, Dep_name: e.target.value })}
               required
+              disabled={loading}
             />
           </div>
+          {(localError || error) && <div className="text-red-600 text-sm">{localError || error}</div>}
           <div className="flex justify-end space-x-2">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit">{department ? "Update" : "Add"} Department</Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? <span className="flex items-center"><span className="animate-spin mr-2 w-4 h-4 border-2 border-t-2 border-gray-200 border-t-red-500 rounded-full"></span>{department ? "Updating..." : "Adding..."}</span> : (department ? "Update" : "Add") + " Department"}
+            </Button>
           </div>
         </form>
       </DialogContent>

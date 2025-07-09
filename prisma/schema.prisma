@@ -19,6 +19,7 @@ model Item {
   county      String  // County name/id (could be relation in future)
   userId      Int
   user        User     @relation(fields: [userId], references: [id])
+  allocations Allocation[]
 }
 
 model Category {
@@ -41,17 +42,14 @@ model Department {
 }
 
 model Allocation {
-  id             Int     @id @default(autoincrement())
-  ID_PF_No       String  // Member Payroll/ID Number
-  Member_Name    String
-  Department     String
-  Office_Location String
-  County         String
-  Item_Serial_No String
-  Category       String
-  Model          String
-  Item_Name      String
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id])
+  itemId         Int
+  item           Item     @relation(fields: [itemId], references: [id])
   Date_Allocated String
+  Date_Returned  String?
+  status         String   // "active" or "returned"
   Message        String?
 }
 
@@ -71,4 +69,5 @@ model User {
   department   Department? @relation(fields: [departmentId], references: [id])
   county       String
   items        Item[]
+  allocations  Allocation[]
 }

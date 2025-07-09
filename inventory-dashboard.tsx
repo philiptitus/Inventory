@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Sheet, SheetContent } from "@/components/ui/sheet"
+import Sidebar from "./components/inventory/Sidebar"
+import RightSidebar from "./components/inventory/RightSidebar"
 import {
   Home,
   Package,
@@ -25,7 +27,7 @@ import {
   Tag,
   Car,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useInventoryData } from "./hooks/useInventoryData"
 import ItemModal from "./components/modals/ItemModal"
 import MemberModal from "./components/modals/MemberModal"
@@ -33,6 +35,26 @@ import AllocationModal from "./components/modals/AllocationModal"
 import DeleteConfirmModal from "./components/modals/DeleteConfirmModal"
 import { CategoryModal, CountyModal, ModelModal, DepartmentModal } from "./components/modals/SimpleModals"
 import type { Item, Member, Allocation, Category, County, Model, Department } from "./types/inventory"
+import Link from "next/link"
+import { useToast } from "@/hooks/use-toast"
+import { updateCategory as apiUpdateCategory, deleteCategory as apiDeleteCategory, fetchCategories as apiFetchCategories } from "@/lib/categoryApi"
+import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel } from "@/components/ui/alert-dialog"
+import { fetchModels as apiFetchModels, createModel as apiCreateModel, updateModel as apiUpdateModel, deleteModel as apiDeleteModel } from "@/lib/modelApi"
+import ModelEditModal from "@/components/modals/ModelEditModal"
+import ModelDeleteModal from "@/components/modals/ModelDeleteModal"
+import ModelsSection from "./components/inventory/ModelsSection";
+import CountiesSection from "./components/inventory/CountiesSection";
+import DepartmentsSection from "./components/inventory/DepartmentsSection";
+import AllocationsSection from "./components/inventory/AllocationsSection";
+import MembersSection from "./components/inventory/MembersSection";
+import ItemsSection from "./components/inventory/ItemsSection";
+import CategoriesSection from "./components/inventory/CategoriesSection";
+import DashboardSection from "./components/inventory/DashboardSection";
+import { fetchCounties as apiFetchCounties, createCounty as apiCreateCounty, updateCounty as apiUpdateCounty, apiDeleteCounty } from "@/lib/countyApi";
+import { apiFetchDepartments, apiCreateDepartment, apiUpdateDepartment, apiDeleteDepartment } from "@/lib/departmentApi";
+import { apiFetchItems, apiCreateItem, apiUpdateItem, apiDeleteItem, apiFetchItemById } from "@/lib/itemApi";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { apiFetchAllocations } from "@/lib/allocationApi";
 
 type ActivePage =
   | "dashboard"
@@ -46,12 +68,13 @@ type ActivePage =
 
 interface InventoryDashboardProps {
   onLogout?: () => void
+  initialPage?: ActivePage
 }
 
-export default function InventoryDashboard({ onLogout }: InventoryDashboardProps) {
+export default function InventoryDashboard({ onLogout, initialPage }: InventoryDashboardProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
-  const [activePage, setActivePage] = useState<ActivePage>("dashboard")
+  const [activePage, setActivePage] = useState<ActivePage>(initialPage || "dashboard")
   const [searchTerm, setSearchTerm] = useState("")
 
   // Modal states
@@ -77,16 +100,9 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
   const [deleteTarget, setDeleteTarget] = useState<{ type: string; id: number; name: string } | null>(null)
 
   const {
-    items,
-    categories,
-    counties,
+    categories: fakeCategories,
     members,
-    models,
-    departments,
-    allocations,
-    addItem,
-    updateItem,
-    deleteItem,
+    models: fakeModels,
     addCategory,
     updateCategory,
     deleteCategory,
@@ -99,13 +115,237 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
     addModel,
     updateModel,
     deleteModel,
-    addDepartment,
-    updateDepartment,
-    deleteDepartment,
-    addAllocation,
-    updateAllocation,
-    deleteAllocation,
   } = useInventoryData()
+
+  // Add a useState for departments
+  const [departments, setDepartments] = useState<Department[]>([]);
+
+  // Add state for items
+  const [items, setItems] = useState<Item[]>([]);
+  const [itemListLoading, setItemListLoading] = useState(false);
+  const [itemLoading, setItemLoading] = useState(false);
+  const [itemError, setItemError] = useState<string | null>(null);
+
+  // Add state for item detail modal
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailItem, setDetailItem] = useState<Item | null>(null);
+  const [detailItemLoading, setDetailItemLoading] = useState(false);
+  const [detailItemError, setDetailItemError] = useState<string | null>(null);
+
+  const [user, setUser] = useState<{ name: string; isAdmin: boolean } | null>(null)
+  const { toast } = useToast()
+  const [categoryLoading, setCategoryLoading] = useState(false)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [categoryPage, setCategoryPage] = useState(1)
+  const [categoryTotalPages, setCategoryTotalPages] = useState(1)
+  const [categoryListLoading, setCategoryListLoading] = useState(false)
+
+  // Add state for editing and deleting categories
+  const [editCategoryModalOpen, setEditCategoryModalOpen] = useState(false)
+  const [editCategoryLoading, setEditCategoryLoading] = useState(false)
+  const [editCategoryError, setEditCategoryError] = useState<string | null>(null)
+  const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null)
+  const [deleteCategoryModalOpen, setDeleteCategoryModalOpen] = useState(false)
+  const [deleteCategoryLoading, setDeleteCategoryLoading] = useState(false)
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null)
+
+  // Model state
+  const [models, setModels] = useState<Model[]>([])
+  const [modelLoading, setModelLoading] = useState(false)
+  const [modelListLoading, setModelListLoading] = useState(false)
+  const [modelPage, setModelPage] = useState(1)
+  const [modelTotalPages, setModelTotalPages] = useState(1)
+  const [editModelModalOpen, setEditModelModalOpen] = useState(false)
+  const [editModelLoading, setEditModelLoading] = useState(false)
+  const [editModelError, setEditModelError] = useState<string | null>(null)
+  const [modelToEdit, setModelToEdit] = useState<Model | null>(null)
+  const [deleteModelModalOpen, setDeleteModelModalOpen] = useState(false)
+  const [deleteModelLoading, setDeleteModelLoading] = useState(false)
+  const [modelToDelete, setModelToDelete] = useState<Model | null>(null)
+
+  // Counties state
+  const [counties, setCounties] = useState<County[]>([])
+  const [countyPage, setCountyPage] = useState(1)
+  const [countyTotalPages, setCountyTotalPages] = useState(1)
+  const [countyListLoading, setCountyListLoading] = useState(false)
+  const [countyLoading, setCountyLoading] = useState(false)
+  const [countyError, setCountyError] = useState<string | null>(null);
+
+  const [editCountyModalOpen, setEditCountyModalOpen] = useState(false)
+  const [deleteCountyModalOpen, setDeleteCountyModalOpen] = useState(false)
+  const [deleteCountyLoading, setDeleteCountyLoading] = useState(false)
+  const [countyToDelete, setCountyToDelete] = useState<County | null>(null)
+  const [editCountyError, setEditCountyError] = useState<string | null>(null)
+  const [editCountyLoading, setEditCountyLoading] = useState(false)
+  const [countyToEdit, setCountyToEdit] = useState<County | null>(null)
+
+  // 1. Add state for department loading and error
+  const [departmentLoading, setDepartmentLoading] = useState(false);
+  const [departmentError, setDepartmentError] = useState<string | null>(null);
+
+  // Add state for deleting departments
+  const [deleteDepartmentModalOpen, setDeleteDepartmentModalOpen] = useState(false);
+  const [deleteDepartmentLoading, setDeleteDepartmentLoading] = useState(false);
+  const [departmentToDelete, setDepartmentToDelete] = useState<Department | null>(null);
+
+  // Add state for editing departments
+  const [editDepartmentModalOpen, setEditDepartmentModalOpen] = useState(false);
+  const [editDepartmentLoading, setEditDepartmentLoading] = useState(false);
+  const [editDepartmentError, setEditDepartmentError] = useState<string | null>(null);
+  const [departmentToEdit, setDepartmentToEdit] = useState<Department | null>(null);
+
+  // Add state for editing and deleting items
+  const [editItemModalOpen, setEditItemModalOpen] = useState(false);
+  const [editItemLoading, setEditItemLoading] = useState(false);
+  const [editItemError, setEditItemError] = useState<string | null>(null);
+  const [itemToEdit, setItemToEdit] = useState<Item | null>(null);
+  const [deleteItemModalOpen, setDeleteItemModalOpen] = useState(false);
+  const [deleteItemLoading, setDeleteItemLoading] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
+
+  // Add state for allocations
+  const [allocations, setAllocations] = useState<Allocation[]>([]);
+  const [allocationListLoading, setAllocationListLoading] = useState(false);
+  const [allocationError, setAllocationError] = useState<string | null>(null);
+
+  // Fetch allocations from backend
+  const fetchAndSetAllocations = async () => {
+    setAllocationListLoading(true);
+    setAllocationError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      const data = await apiFetchAllocations(token || "");
+      setAllocations(data.allocations || []);
+    } catch (err: any) {
+      setAllocationError(err.message || "Failed to fetch allocations");
+      toast({ title: "Network error", description: err.message || "Could not fetch allocations.", variant: "destructive" });
+    }
+    setAllocationListLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAndSetAllocations();
+  }, []);
+
+  useEffect(() => {
+    if (activePage !== "allocations") return;
+    fetchAndSetAllocations();
+    // eslint-disable-next-line
+  }, [activePage]);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+      if (!token) return;
+      const res = await fetch("/api/user", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser({ name: data.name, isAdmin: data.isAdmin });
+      }
+    };
+    fetchUser();
+  }, []);
+
+  // Add a function to fetch categories and update state
+  const fetchAndSetCategories = async (page = categoryPage) => {
+    setCategoryListLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      const data = await apiFetchCategories(page, 10, token || undefined);
+      setCategories(data.categories);
+      setCategoryTotalPages(data.pagination.totalPages);
+    } catch (err) {
+      toast({ title: "Error", description: "Could not fetch categories.", variant: "destructive" });
+    }
+    setCategoryListLoading(false);
+  };
+
+  // Fetch categories on mount
+  useEffect(() => {
+    fetchAndSetCategories();
+    // eslint-disable-next-line
+  }, []);
+
+  // Replace useEffect for fetching categories
+  useEffect(() => {
+    if (activePage !== "categories") return;
+    fetchAndSetCategories();
+    // eslint-disable-next-line
+  }, [activePage, categoryPage]);
+
+  // Fetch models
+  const fetchAndSetModels = async (page = modelPage) => {
+    setModelListLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      const data = await apiFetchModels(page, 10, token || undefined);
+      setModels(data.models);
+      setModelTotalPages(data.pagination.totalPages);
+    } catch (err) {
+      toast({ title: "Error", description: "Could not fetch models.", variant: "destructive" });
+    }
+    setModelListLoading(false);
+  };
+
+  // Fetch models on mount
+  useEffect(() => {
+    fetchAndSetModels();
+    // eslint-disable-next-line
+  }, []);
+
+  // Replace useEffect for fetching models
+  useEffect(() => {
+    if (activePage !== "models") return;
+    fetchAndSetModels();
+    // eslint-disable-next-line
+  }, [activePage, modelPage]);
+
+  // Fetch counties list
+  const fetchAndSetCounties = async (page = countyPage) => {
+    setCountyListLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      const data = await apiFetchCounties(page, 10, token || undefined);
+      setCounties(data.counties);
+      setCountyTotalPages(data.pagination.totalPages);
+    } catch (err) {
+      toast({ title: "Error", description: "Could not fetch counties.", variant: "destructive" });
+    }
+    setCountyListLoading(false);
+  };
+
+  // Fetch counties on mount
+  useEffect(() => {
+    fetchAndSetCounties();
+    // eslint-disable-next-line
+  }, []);
+
+  useEffect(() => {
+    if (activePage !== "counties") return;
+    fetchAndSetCounties();
+    // eslint-disable-next-line
+  }, [activePage, countyPage]);
+
+  // 3. Add fetchAndSetDepartments function
+  const fetchAndSetDepartments = async (page = 1) => {
+    setDepartmentLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      const data = await apiFetchDepartments(page, 100, token || undefined);
+      setDepartments(data.departments);
+    } catch (err) {
+      toast({ title: "Error", description: "Could not fetch departments.", variant: "destructive" });
+    }
+    setDepartmentLoading(false);
+  };
+
+  useEffect(() => {
+    if (activePage !== "departments") return;
+    fetchAndSetDepartments();
+    // eslint-disable-next-line
+  }, [activePage]);
 
   // Filter data based on search
   const filteredItems = items.filter(
@@ -231,488 +471,459 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
     }
   }
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      <div className="p-6 border-b border-red-700">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-            <span className="text-red-900 font-bold text-lg">Y</span>
-          </div>
-          <span className="text-xl font-bold">YouthFund</span>
-        </div>
-      </div>
+  // Real category creation handler
+  const handleCategorySave = async (category: Omit<Category, "id">) => {
+    setCategoryLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      const res = await fetch("/api/category", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ category_name: category.category_name }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast({ title: "Error", description: err.error || "Failed to add category", variant: "destructive" });
+        setCategoryLoading(false);
+        throw new Error(err.error || "Failed to add category");
+      }
+      toast({ title: "Category added!", description: `Category '${category.category_name}' created successfully.`, variant: "default" });
+      setCategoryPage(1); // Go to first page to see new category
+    } catch (err: any) {
+      toast({ title: "Network error", description: "Could not add category.", variant: "destructive" });
+      throw err;
+    }
+    setCategoryLoading(false);
+  };
 
-      <nav className="flex-1 p-4">
-        <div className="space-y-2">
-          <div
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer ${
-              activePage === "dashboard"
-                ? "bg-red-700 text-white"
-                : "text-red-200 hover:bg-red-700 hover:text-white"
-            }`}
-            onClick={() => setActivePage("dashboard")}
-          >
-            <Home className="w-5 h-5" />
-            <span>Dashboard</span>
-            {activePage === "dashboard" && <div className="w-2 h-2 bg-[#0a9b21] rounded-full ml-auto"></div>}
-          </div>
-          <div
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer ${
-              activePage === "items" ? "bg-red-700 text-white" : "text-red-200 hover:bg-red-700 hover:text-white"
-            }`}
-            onClick={() => setActivePage("items")}
-          >
-            <Package className="w-5 h-5" />
-            <span>Items</span>
-          </div>
-          <div
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer ${
-              activePage === "members"
-                ? "bg-red-700 text-white"
-                : "text-red-200 hover:bg-red-700 hover:text-white"
-            }`}
-            onClick={() => setActivePage("members")}
-          >
-            <Users className="w-5 h-5" />
-            <span>Members</span>
-          </div>
-          <div
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer ${
-              activePage === "allocations"
-                ? "bg-red-700 text-white"
-                : "text-red-200 hover:bg-red-700 hover:text-white"
-            }`}
-            onClick={() => setActivePage("allocations")}
-          >
-            <FileText className="w-5 h-5" />
-            <span>Allocations</span>
-          </div>
-          <div
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer ${
-              activePage === "categories"
-                ? "bg-red-700 text-white"
-                : "text-red-200 hover:bg-red-700 hover:text-white"
-            }`}
-            onClick={() => setActivePage("categories")}
-          >
-            <Tag className="w-5 h-5" />
-            <span>Categories</span>
-          </div>
-          <div
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer ${
-              activePage === "models" ? "bg-red-700 text-white" : "text-red-200 hover:bg-red-700 hover:text-white"
-            }`}
-            onClick={() => setActivePage("models")}
-          >
-            <Car className="w-5 h-5" />
-            <span>Models</span>
-          </div>
-          <div
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer ${
-              activePage === "counties"
-                ? "bg-red-700 text-white"
-                : "text-red-200 hover:bg-red-700 hover:text-white"
-            }`}
-            onClick={() => setActivePage("counties")}
-          >
-            <MapPin className="w-5 h-5" />
-            <span>Counties</span>
-          </div>
-          <div
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer ${
-              activePage === "departments"
-                ? "bg-red-700 text-white"
-                : "text-red-200 hover:bg-red-700 hover:text-white"
-            }`}
-            onClick={() => setActivePage("departments")}
-          >
-            <Building className="w-5 h-5" />
-            <span>Departments</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-red-200 hover:bg-red-700 hover:text-white cursor-pointer">
-            <Settings className="w-5 h-5" />
-            <span>Settings</span>
-          </div>
-          <div
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-red-200 hover:bg-red-700 hover:text-white cursor-pointer"
-            onClick={onLogout}
-          >
-            <LogOut className="w-5 h-5" />
-            <span>Log Out</span>
-          </div>
-        </div>
-      </nav>
-    </div>
-  )
+  // Edit logic
+  const handleEditCategory = (category: Category) => {
+    setCategoryToEdit(category);
+    setEditCategoryError(null);
+    setEditCategoryModalOpen(true);
+  };
+  const handleUpdateCategory = async (id: number, data: Omit<Category, "id">) => {
+    setEditCategoryLoading(true);
+    setEditCategoryError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiUpdateCategory(id, data.category_name, token);
+      toast({ title: "Category updated!", description: `Category updated successfully.`, variant: "default" });
+      setEditCategoryModalOpen(false);
+      setCategoryToEdit(null);
+      await fetchAndSetCategories();
+    } catch (err: any) {
+      setEditCategoryError(err.message || "Failed to update category");
+      toast({ title: "Update failed", description: err.message || "Failed to update category", variant: "destructive" });
+    }
+    setEditCategoryLoading(false);
+  };
 
-  const RightSidebarContent = () => (
-    <div className="h-full p-6 overflow-y-auto">
-      <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-red-200" />
-          <Input
-            placeholder="Search inventory..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-red-700 border-red-700 text-white placeholder-[#8b8989]"
-          />
-        </div>
-      </div>
+  // Delete logic
+  const handleDeleteCategory = (category: Category) => {
+    setCategoryToDelete(category);
+    setDeleteCategoryModalOpen(true);
+  };
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    setDeleteCategoryLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiDeleteCategory(categoryToDelete.id, token);
+      toast({ title: "Category deleted!", description: `Category deleted successfully.`, variant: "default" });
+      setDeleteCategoryModalOpen(false);
+      setCategoryToDelete(null);
+      await fetchAndSetCategories();
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message || "Failed to delete category", variant: "destructive" });
+    }
+    setDeleteCategoryLoading(false);
+  };
 
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold">Quick Actions</h3>
-        </div>
-        <div className="space-y-2">
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-white hover:bg-red-700"
-            onClick={() => handleAdd("item")}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add New Item
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-white hover:bg-red-700"
-            onClick={() => handleAdd("member")}
-          >
-            <Users className="w-4 h-4 mr-2" />
-            Add Member
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-white hover:bg-red-700"
-            onClick={() => handleAdd("allocation")}
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            New Allocation
-          </Button>
-        </div>
-      </div>
+  // Real model creation handler
+  const handleModelSave = async (model: Omit<Model, "id">) => {
+    setModelLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiCreateModel(model.model_name, token);
+      toast({ title: "Model added!", description: `Model '${model.model_name}' created successfully.`, variant: "default" });
+      setModelPage(1);
+      setModelModalOpen(false);
+      await fetchAndSetModels(1);
+    } catch (err: any) {
+      toast({ title: "Network error", description: err.message || "Could not add model.", variant: "destructive" });
+    }
+    setModelLoading(false);
+  };
 
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold">Recent Activity</h3>
-        </div>
-        <div className="space-y-3">
-          {allocations
-            .slice(-5)
-            .reverse()
-            .map((allocation, index) => (
-              <div key={index} className="text-sm">
-                <p className="font-medium text-white">{allocation.Item_Name}</p>
-                <p className="text-red-200">Allocated to {allocation.Member_Name}</p>
-                <p className="text-xs text-red-200">{allocation.Date_Allocated}</p>
-              </div>
-            ))}
-        </div>
-      </div>
-    </div>
-  )
+  // Edit logic
+  const handleEditModel = (model: Model) => {
+    setModelToEdit(model);
+    setEditModelError(null);
+    setEditModelModalOpen(true);
+  };
+  const handleUpdateModel = async (id: number, data: Omit<Model, "id">) => {
+    setEditModelLoading(true);
+    setEditModelError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiUpdateModel(id, data.model_name, token);
+      toast({ title: "Model updated!", description: `Model updated successfully.`, variant: "default" });
+      setEditModelModalOpen(false);
+      setModelToEdit(null);
+      await fetchAndSetModels();
+    } catch (err: any) {
+      setEditModelError(err.message || "Failed to update model");
+      toast({ title: "Update failed", description: err.message || "Failed to update model", variant: "destructive" });
+    }
+    setEditModelLoading(false);
+  };
 
-  const renderDashboard = () => (
-    <>
-      {/* Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-6">
-        <Card className="bg-white border border-[#d9d9d9]">
-          <CardContent className="p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl lg:text-3xl font-bold text-[#0a9b21]">{items.length}</p>
-                <p className="text-red-200 font-medium text-sm lg:text-base">Total Items</p>
-              </div>
-              <Package className="w-8 h-8 text-[#0a9b21]" />
-            </div>
-          </CardContent>
-        </Card>
+  // Delete logic
+  const handleDeleteModel = (model: Model) => {
+    setModelToDelete(model);
+    setDeleteModelModalOpen(true);
+  };
+  const handleConfirmDeleteModel = async () => {
+    if (!modelToDelete) return;
+    setDeleteModelLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiDeleteModel(modelToDelete.id, token);
+      toast({ title: "Model deleted!", description: `Model deleted successfully.`, variant: "default" });
+      setDeleteModelModalOpen(false);
+      setModelToDelete(null);
+      await fetchAndSetModels();
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message || "Failed to delete model", variant: "destructive" });
+    }
+    setDeleteModelLoading(false);
+  };
 
-        <Card className="bg-white border border-[#d9d9d9]">
-          <CardContent className="p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl lg:text-3xl font-bold text-[#0c1cab]">{members.length}</p>
-                <p className="text-red-200 font-medium text-sm lg:text-base">Total Members</p>
-              </div>
-              <Users className="w-8 h-8 text-[#0c1cab]" />
-            </div>
-          </CardContent>
-        </Card>
+  // County creation handler
+  const handleCountySave = async (county: Omit<County, "id">) => {
+    setCountyLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiCreateCounty(county.county_name, county.county_number, token || undefined);
+      toast({ title: "County added!", description: `County '${county.county_name}' created successfully.`, variant: "default" });
+      setCountyPage(1); // Go to first page to see new county
+      await fetchAndSetCounties(1);
+    } catch (err: any) {
+      toast({ title: "Network error", description: err.message || "Could not add county.", variant: "destructive" });
+      setCountyError(err.message || 'Failed to add county');
+      throw err;
+    }
+    setCountyLoading(false);
+  };
 
-        <Card className="bg-white border border-[#d9d9d9]">
-          <CardContent className="p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl lg:text-3xl font-bold text-[#be0606]">{allocations.length}</p>
-                <p className="text-red-200 font-medium text-sm lg:text-base">Active Allocations</p>
-              </div>
-              <FileText className="w-8 h-8 text-[#be0606]" />
-            </div>
-          </CardContent>
-        </Card>
+  // Edit logic
+  const handleEditCounty = (county: County) => {
+    setCountyToEdit(county);
+    setEditCountyError(null);
+    setEditCountyModalOpen(true);
+  };
+  const handleUpdateCounty = async (id: number, data: Omit<County, "id">) => {
+    setEditCountyLoading(true);
+    setEditCountyError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiUpdateCounty(id, data.county_name, data.county_number, token || undefined);
+      toast({ title: "County updated!", description: `County updated successfully.`, variant: "default" });
+      setEditCountyModalOpen(false);
+      setCountyToEdit(null);
+      await fetchAndSetCounties();
+    } catch (err: any) {
+      setEditCountyError(err.message || "Failed to update county");
+      toast({ title: "Update failed", description: err.message || "Failed to update county", variant: "destructive" });
+    }
+    setEditCountyLoading(false);
+  };
 
-        <Card className="bg-white border border-[#d9d9d9]">
-          <CardContent className="p-4 lg:p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-2xl lg:text-3xl font-bold text-[#41b219]">{categories.length}</p>
-                <p className="text-red-200 font-medium text-sm lg:text-base">Categories</p>
-              </div>
-              <Tag className="w-8 h-8 text-[#41b219]" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+  // Delete logic
+  const handleDeleteCounty = (county: County) => {
+    setCountyToDelete(county);
+    setDeleteCountyModalOpen(true);
+  };
+  const handleConfirmDeleteCounty = async () => {
+    if (!countyToDelete) return;
+    setDeleteCountyLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiDeleteCounty(countyToDelete.id, token || undefined);
+      toast({ title: "County deleted!", description: `County deleted successfully.`, variant: "default" });
+      setDeleteCountyModalOpen(false);
+      setCountyToDelete(null);
+      await fetchAndSetCounties();
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message || "Failed to delete county", variant: "destructive" });
+    }
+    setDeleteCountyLoading(false);
+  };
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6 mb-6">
-        <Card className="bg-white border border-[#d9d9d9]">
-          <CardHeader>
-            <CardTitle className="text-[#1c1b1f] text-lg">Items by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {categories.map((category) => {
-                const count = items.filter((item) => item.category === category.category_name).length
-                return (
-                  <div key={category.id} className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{category.category_name}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-2 bg-[#d9d9d9] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#0a9b21] rounded-full"
-                          style={{ width: `${items.length > 0 ? (count / items.length) * 100 : 0}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-sm font-bold text-[#0a9b21]">{count}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
+  // 2. Add handler for creating a department
+  const handleDepartmentSave = async (department: Omit<Department, "id">) => {
+    setDepartmentLoading(true);
+    setDepartmentError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiCreateDepartment(Number(department.Dep_ID), department.Dep_name, token || undefined);
+      toast({ title: "Department added!", description: `Department '${department.Dep_name}' created successfully.`, variant: "default" });
+      setDepartmentModalOpen(false);
+      setEditingDepartment(undefined);
+      await fetchAndSetDepartments();
+    } catch (err: any) {
+      setDepartmentError(err.message || 'Failed to add department');
+      toast({ title: "Network error", description: err.message || "Could not add department.", variant: "destructive" });
+      throw err;
+    }
+    setDepartmentLoading(false);
+  };
 
-        <Card className="bg-white border border-[#d9d9d9]">
-          <CardHeader>
-            <CardTitle className="text-[#1c1b1f] text-lg">Items by County</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {counties.map((county) => {
-                const count = items.filter((item) => item.county === county.county_name).length
-                return (
-                  <div key={county.id} className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{county.county_name}</span>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-2 bg-[#d9d9d9] rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-[#0c1cab] rounded-full"
-                          style={{ width: `${items.length > 0 ? (count / items.length) * 100 : 0}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-sm font-bold text-[#0c1cab]">{count}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+  // Edit logic
+  const handleEditDepartment = (department: Department) => {
+    setDepartmentToEdit(department);
+    setEditDepartmentModalOpen(true);
+  };
+  const handleUpdateDepartment = async (id: number, data: Omit<Department, "id">) => {
+    setEditDepartmentLoading(true);
+    setEditDepartmentError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiUpdateDepartment(id, data.Dep_name, token || undefined);
+      toast({ title: "Department updated!", description: `Department updated successfully.`, variant: "default" });
+      setEditDepartmentModalOpen(false);
+      setDepartmentToEdit(null);
+      await fetchAndSetDepartments();
+    } catch (err: any) {
+      setEditDepartmentError(err.message || "Failed to update department");
+      toast({ title: "Update failed", description: err.message || "Failed to update department", variant: "destructive" });
+    }
+    setEditDepartmentLoading(false);
+  };
 
-      {/* Recent Allocations Table */}
-      <Card className="bg-white border border-[#d9d9d9]">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-[#1c1b1f] text-lg">Recent Allocations</CardTitle>
-            <Button size="sm" className="bg-[#0a9b21] hover:bg-[#0a9b21]/90" onClick={() => handleAdd("allocation")}>
-              <Plus className="w-4 h-4 mr-2" />
-              New Allocation
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-[#d9d9d9]">
-                  <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Member</th>
-                  <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Item</th>
-                  <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Serial No</th>
-                  <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Department</th>
-                  <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Date Allocated</th>
-                  <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Status</th>
-                  <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allocations.slice(0, 5).map((allocation) => (
-                  <tr key={allocation.id} className="border-b border-[#d9d9d9]">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <Avatar className="w-6 h-6 lg:w-8 lg:h-8">
-                          <AvatarFallback className="text-xs">
-                            {allocation.Member_Name.split(" ")
-                              .map((n) => n[0])
-                              .join("")}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium text-sm">{allocation.Member_Name}</p>
-                          <p className="text-xs text-red-200">{allocation.ID_PF_No}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div>
-                        <p className="font-medium text-sm">{allocation.Item_Name}</p>
-                        <p className="text-xs text-red-200">{allocation.Model}</p>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-sm">{allocation.Item_Serial_No}</td>
-                    <td className="py-3 px-4 text-sm">{allocation.Department}</td>
-                    <td className="py-3 px-4 text-sm">{allocation.Date_Allocated}</td>
-                    <td className="py-3 px-4">
-                      <Badge variant="secondary" className="bg-[#0a9b21]/10 text-[#0a9b21] text-xs">
-                        Active
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <Eye className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0"
-                          onClick={() => handleEdit("allocation", allocation)}
-                        >
-                          <Edit className="w-3 h-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 w-8 p-0 text-[#be0606] hover:text-[#be0606]"
-                          onClick={() => openDeleteModal("allocation", allocation.id, allocation.Item_Name)}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-    </>
-  )
+  // Delete logic
+  const handleDeleteDepartment = (department: Department) => {
+    setDepartmentToDelete(department);
+    setDeleteDepartmentModalOpen(true);
+  };
+  const handleConfirmDeleteDepartment = async () => {
+    if (!departmentToDelete) return;
+    setDeleteDepartmentLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiDeleteDepartment(departmentToDelete.id, token || undefined);
+      toast({ title: "Department deleted!", description: `Department deleted successfully.`, variant: "default" });
+      setDeleteDepartmentModalOpen(false);
+      setDepartmentToDelete(null);
+      await fetchAndSetDepartments();
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message || "Failed to delete department", variant: "destructive" });
+    }
+    setDeleteDepartmentLoading(false);
+  };
 
-  const renderDataTable = (data: any[], type: string, columns: string[]) => (
-    <Card className="bg-white border border-[#d9d9d9]">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-[#1c1b1f] text-lg capitalize">{type}</CardTitle>
-          <Button size="sm" className="bg-[#0a9b21] hover:bg-[#0a9b21]/90" onClick={() => handleAdd(type)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add {type.slice(0, -1)}
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[#d9d9d9]">
-                {columns.map((column, index) => (
-                  <th key={index} className="text-left py-3 px-4 font-medium text-red-200 text-sm capitalize">
-                    {column.replace("_", " ")}
-                  </th>
-                ))}
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((item) => (
-                <tr key={item.id} className="border-b border-[#d9d9d9]">
-                  {columns.map((column, index) => (
-                    <td key={index} className="py-3 px-4 text-sm">
-                      {item[column]}
-                    </td>
-                  ))}
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Eye className="w-3 h-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEdit(type, item)}>
-                        <Edit className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-[#be0606] hover:text-[#be0606]"
-                        onClick={() =>
-                          openDeleteModal(
-                            type,
-                            item.id,
-                            item.name ||
-                              item.pname ||
-                              item.member_name ||
-                              item.category_name ||
-                              item.county_name ||
-                              item.model_name ||
-                              item.Dep_name,
-                          )
-                        }
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </CardContent>
-    </Card>
-  )
+  // Fetch items from backend
+  const fetchAndSetItems = async () => {
+    setItemListLoading(true);
+    setItemError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      const data = await apiFetchItems(token || "");
+      setItems(data.items || []);
+    } catch (err: any) {
+      setItemError(err.message || "Failed to fetch items");
+      toast({ title: "Network error", description: err.message || "Could not fetch items.", variant: "destructive" });
+    }
+    setItemListLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAndSetItems();
+  }, []);
+
+  // Create item
+  const handleItemSave = async (item: Omit<Item, "id">) => {
+    setItemLoading(true);
+    setItemError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiCreateItem(item, token || "");
+      toast({ title: "Item added!", description: `Item '${item.pname}' created successfully.`, variant: "default" });
+      setItemModalOpen(false);
+      setEditingItem(undefined);
+      await fetchAndSetItems();
+    } catch (err: any) {
+      setItemError(err.message || 'Failed to add item');
+      toast({ title: "Network error", description: err.message || "Could not add item.", variant: "destructive" });
+      throw err;
+    }
+    setItemLoading(false);
+  };
+
+  // Edit logic
+  const handleEditItem = (item: Item) => {
+    setItemToEdit(item);
+    setEditItemModalOpen(true);
+  };
+  const handleUpdateItem = async (id: number, data: Omit<Item, "id">) => {
+    setEditItemLoading(true);
+    setEditItemError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiUpdateItem(id, data, token || "");
+      toast({ title: "Item updated!", description: `Item updated successfully.`, variant: "default" });
+      setEditItemModalOpen(false);
+      setItemToEdit(null);
+      await fetchAndSetItems();
+    } catch (err: any) {
+      setEditItemError(err.message || "Failed to update item");
+      toast({ title: "Update failed", description: err.message || "Failed to update item", variant: "destructive" });
+    }
+    setEditItemLoading(false);
+  };
+  // Delete logic
+  const handleDeleteItem = (item: Item) => {
+    setItemToDelete(item);
+    setDeleteItemModalOpen(true);
+  };
+  const handleConfirmDeleteItem = async () => {
+    if (!itemToDelete) return;
+    setDeleteItemLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiDeleteItem(itemToDelete.id, token || "");
+      toast({ title: "Item deleted!", description: `Item deleted successfully.`, variant: "default" });
+      setDeleteItemModalOpen(false);
+      setItemToDelete(null);
+      await fetchAndSetItems();
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message || "Failed to delete item", variant: "destructive" });
+    }
+    setDeleteItemLoading(false);
+  };
+
+  const openDetailModal = async (item: Item) => {
+    setDetailModalOpen(true);
+    setDetailItem(null);
+    setDetailItemLoading(true);
+    setDetailItemError(null);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      const data = await apiFetchItemById(item.id, token || "");
+      setDetailItem(data);
+    } catch (err: any) {
+      setDetailItemError(err.message || "Failed to fetch item details");
+    }
+    setDetailItemLoading(false);
+  };
 
   const renderContent = () => {
     switch (activePage) {
       case "dashboard":
-        return renderDashboard()
+        return (
+          <DashboardSection
+            items={items}
+            members={members}
+            allocations={allocations}
+            categories={categories}
+            counties={counties}
+            handleAdd={handleAdd}
+          />
+        )
       case "items":
-        return renderDataTable(filteredItems, "items", ["pname", "serialno", "model", "category", "county"])
+        return (
+          <ItemsSection
+            items={items}
+            setEditingItem={setEditingItem}
+            setItemModalOpen={setItemModalOpen}
+            handleEdit={handleEditItem}
+            openDeleteModal={handleDeleteItem}
+            openDetailModal={openDetailModal}
+          />
+        )
       case "members":
-        return renderDataTable(filteredMembers, "members", [
-          "payroll_no",
-          "member_name",
-          "department",
-          "office_location",
-        ])
+        return (
+          <MembersSection
+            members={filteredMembers}
+            setEditingMember={setEditingMember}
+            setMemberModalOpen={setMemberModalOpen}
+            handleEdit={handleEdit}
+            openDeleteModal={openDeleteModal}
+          />
+        )
       case "allocations":
-        return renderDataTable(filteredAllocations, "allocations", [
-          "Member_Name",
-          "Item_Name",
-          "Item_Serial_No",
-          "Department",
-          "Date_Allocated",
-        ])
+        return (
+          <AllocationsSection
+            allocations={allocations}
+            setEditingAllocation={setEditingAllocation}
+            setAllocationModalOpen={setAllocationModalOpen}
+            handleEdit={handleEdit}
+            openDeleteModal={openDeleteModal}
+          />
+        )
       case "categories":
-        return renderDataTable(categories, "categories", ["category_name", "status"])
+        return (
+          <CategoriesSection
+            categories={categories}
+            categoryTotalPages={categoryTotalPages}
+            categoryPage={categoryPage}
+            setCategoryPage={setCategoryPage}
+            setEditingCategory={setEditingCategory}
+            setCategoryModalOpen={setCategoryModalOpen}
+            handleEditCategory={handleEditCategory}
+            handleDeleteCategory={handleDeleteCategory}
+          />
+        )
       case "counties":
-        return renderDataTable(counties, "counties", ["county_name", "county_number"])
+        return (
+          <CountiesSection
+            counties={counties}
+            setEditingCounty={setEditingCounty}
+            setCountyModalOpen={setCountyModalOpen}
+            handleEdit={handleEditCounty}
+            openDeleteModal={handleDeleteCounty}
+          />
+        )
       case "models":
-        return renderDataTable(models, "models", ["model_name", "status"])
+        return (
+          <ModelsSection
+            models={models}
+            modelLoading={modelLoading}
+            modelListLoading={modelListLoading}
+            modelPage={modelPage}
+            modelTotalPages={modelTotalPages}
+            setModelPage={setModelPage}
+            setEditingModel={setEditingModel}
+            setModelModalOpen={setModelModalOpen}
+            handleEditModel={handleEditModel}
+            handleDeleteModel={handleDeleteModel}
+          />
+        )
       case "departments":
-        return renderDataTable(departments, "departments", ["Dep_ID", "Dep_name"])
+        return (
+          <DepartmentsSection
+            departments={departments}
+            setEditingDepartment={setEditingDepartment}
+            setDepartmentModalOpen={setDepartmentModalOpen}
+            handleEdit={handleEditDepartment}
+            openDeleteModal={handleDeleteDepartment}
+          />
+        )
       default:
-        return renderDashboard()
+        return (
+          <DashboardSection
+            items={items}
+            members={members}
+            allocations={allocations}
+            categories={categories}
+            counties={counties}
+            handleAdd={handleAdd}
+          />
+        )
     }
   }
 
@@ -720,13 +931,13 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
     <div className="flex h-screen bg-[#fffcfc] overflow-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden lg:flex w-64 bg-[#292929] text-white flex-col">
-        <SidebarContent />
+        <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} />
       </div>
 
       {/* Mobile Sidebar */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-64 bg-[#292929] text-white p-0 border-r-0">
-          <SidebarContent />
+          <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} />
         </SheetContent>
       </Sheet>
 
@@ -757,8 +968,15 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
                 <AvatarFallback>AM</AvatarFallback>
               </Avatar>
               <div className="hidden md:block">
-                <p className="font-medium text-[#1c1b1f] text-sm lg:text-base">Admin User</p>
-                <p className="text-xs lg:text-sm text-red-200">Inventory Manager</p>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-[#1c1b1f] text-sm lg:text-base">
+                    {user ? user.name : <span className="animate-pulse bg-gray-200 rounded w-20 h-4 inline-block" />}
+                  </span>
+                  <Link href="/profile" className="ml-2 px-2 py-1 rounded bg-red-100 text-red-700 text-xs font-semibold hover:bg-red-200 transition">
+                    Profile
+                  </Link>
+                </div>
+                <p className="text-xs lg:text-sm text-red-200">{user && user.isAdmin ? "Admin" : "User"}</p>
               </div>
             </div>
             <Bell className="w-5 h-5 text-red-200" />
@@ -774,13 +992,13 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
 
           {/* Desktop Right Sidebar */}
           <div className="hidden xl:flex w-80 bg-[#292929] text-white">
-            <RightSidebarContent />
+            <RightSidebar searchTerm={searchTerm} setSearchTerm={setSearchTerm} allocations={allocations} handleAdd={handleAdd} />
           </div>
 
           {/* Mobile Right Sidebar */}
           <Sheet open={rightSidebarOpen} onOpenChange={setRightSidebarOpen}>
             <SheetContent side="right" className="w-80 bg-[#292929] text-white p-0 border-l-0">
-              <RightSidebarContent />
+              <RightSidebar searchTerm={searchTerm} setSearchTerm={setSearchTerm} allocations={allocations} handleAdd={handleAdd} />
             </SheetContent>
           </Sheet>
         </div>
@@ -790,8 +1008,8 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
       <ItemModal
         isOpen={itemModalOpen}
         onClose={() => setItemModalOpen(false)}
-        onSave={addItem}
-        onUpdate={updateItem}
+        onSave={handleItemSave}
+        // TODO: Implement item update logic and pass onUpdate here
         item={editingItem}
         categories={categories}
         counties={counties}
@@ -811,8 +1029,8 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
       <AllocationModal
         isOpen={allocationModalOpen}
         onClose={() => setAllocationModalOpen(false)}
-        onSave={addAllocation}
-        onUpdate={updateAllocation}
+        // TODO: Implement allocation creation and pass onSave here
+        // TODO: Implement allocation update and pass onUpdate here
         allocation={editingAllocation}
         members={members}
         items={items}
@@ -821,42 +1039,197 @@ export default function InventoryDashboard({ onLogout }: InventoryDashboardProps
       <CategoryModal
         isOpen={categoryModalOpen}
         onClose={() => setCategoryModalOpen(false)}
-        onSave={addCategory}
-        onUpdate={updateCategory}
+        onSave={activePage === "categories" ? handleCategorySave : addCategory}
         category={editingCategory}
+        loading={activePage === "categories" ? categoryLoading : undefined}
       />
 
       <CountyModal
         isOpen={countyModalOpen}
         onClose={() => setCountyModalOpen(false)}
-        onSave={addCounty}
-        onUpdate={updateCounty}
+        onSave={handleCountySave}
         county={editingCounty}
+        loading={countyLoading}
+        error={countyError || undefined}
       />
 
-      <ModelModal
-        isOpen={modelModalOpen}
-        onClose={() => setModelModalOpen(false)}
-        onSave={addModel}
-        onUpdate={updateModel}
-        model={editingModel}
+      <CountyModal
+        isOpen={editCountyModalOpen}
+        onClose={() => { setEditCountyModalOpen(false); setCountyToEdit(null); }}
+        onSave={async (data) => {
+          if (countyToEdit) {
+            console.log('Update County clicked', countyToEdit.id, data);
+            await handleUpdateCounty(countyToEdit.id, data);
+          }
+        }}
+        county={countyToEdit || undefined}
+        loading={editCountyLoading}
+        error={editCountyError || undefined}
       />
+
+      <AlertDialog open={deleteCategoryModalOpen} onOpenChange={setDeleteCategoryModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Category</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the category "{categoryToDelete?.category_name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteCategoryLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600 text-white"
+              onClick={handleConfirmDeleteCategory}
+              disabled={deleteCategoryLoading}
+            >
+              {deleteCategoryLoading ? <span className="flex items-center"><span className="animate-spin mr-2 w-4 h-4 border-2 border-gray-200 border-t-white rounded-full"></span>Deleting...</span> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <ModelEditModal
+        isOpen={editModelModalOpen}
+        onClose={() => { setEditModelModalOpen(false); setModelToEdit(null); }}
+        onSave={async (data, id) => {
+          if (modelToEdit && id) {
+            await handleUpdateModel(id, data);
+          }
+        }}
+        model={modelToEdit || undefined}
+        loading={editModelLoading}
+        error={editModelError || undefined}
+      />
+
+      <ModelDeleteModal
+        isOpen={deleteModelModalOpen}
+        onClose={() => setDeleteModelModalOpen(false)}
+        onConfirm={handleConfirmDeleteModel}
+        title={modelToDelete?.model_name || ""}
+        description="This action cannot be undone."
+        loading={deleteModelLoading}
+      />
+
+      <AlertDialog open={deleteCountyModalOpen} onOpenChange={setDeleteCountyModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete County</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the county "{countyToDelete?.county_name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteCountyLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600 text-white"
+              onClick={handleConfirmDeleteCounty}
+              disabled={deleteCountyLoading}
+            >
+              {deleteCountyLoading ? <span className="flex items-center"><span className="animate-spin mr-2 w-4 h-4 border-2 border-gray-200 border-t-white rounded-full"></span>Deleting...</span> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <DepartmentModal
         isOpen={departmentModalOpen}
         onClose={() => setDepartmentModalOpen(false)}
-        onSave={addDepartment}
-        onUpdate={updateDepartment}
+        onSave={handleDepartmentSave}
         department={editingDepartment}
+        loading={departmentLoading}
+        error={departmentError || undefined}
       />
 
-      <DeleteConfirmModal
-        isOpen={deleteModalOpen}
-        onClose={() => setDeleteModalOpen(false)}
-        onConfirm={handleDelete}
-        title={deleteTarget?.name || ""}
-        description="This action cannot be undone."
+      <DepartmentModal
+        isOpen={editDepartmentModalOpen}
+        onClose={() => { setEditDepartmentModalOpen(false); setDepartmentToEdit(null); }}
+        onUpdate={async (id, data) => {
+          await handleUpdateDepartment(id, data);
+        }}
+        department={departmentToEdit || undefined}
+        loading={editDepartmentLoading}
+        error={editDepartmentError || undefined}
       />
+
+      <AlertDialog open={deleteDepartmentModalOpen} onOpenChange={setDeleteDepartmentModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Department</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the department "{departmentToDelete?.Dep_name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteDepartmentLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600 text-white"
+              onClick={handleConfirmDeleteDepartment}
+              disabled={deleteDepartmentLoading}
+            >
+              {deleteDepartmentLoading ? <span className="flex items-center"><span className="animate-spin mr-2 w-4 h-4 border-2 border-gray-200 border-t-white rounded-full"></span>Deleting...</span> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <ItemModal
+        isOpen={editItemModalOpen}
+        onClose={() => { setEditItemModalOpen(false); setItemToEdit(null); }}
+        onUpdate={async (id, data) => {
+          await handleUpdateItem(id, data);
+        }}
+        item={itemToEdit || undefined}
+        categories={categories}
+        counties={counties}
+        models={models}
+        loading={editItemLoading}
+        error={editItemError || undefined}
+      />
+
+      <AlertDialog open={deleteItemModalOpen} onOpenChange={setDeleteItemModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Item</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the item "{itemToDelete?.pname}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteItemLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600 text-white"
+              onClick={handleConfirmDeleteItem}
+              disabled={deleteItemLoading}
+            >
+              {deleteItemLoading ? <span className="flex items-center"><span className="animate-spin mr-2 w-4 h-4 border-2 border-gray-200 border-t-white rounded-full"></span>Deleting...</span> : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Render ItemDetailModal (inline for now) */}
+      <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Item Details</DialogTitle>
+          </DialogHeader>
+          {detailItemLoading ? (
+            <div className="py-8 text-center">Loading...</div>
+          ) : detailItemError ? (
+            <div className="py-8 text-center text-red-500">{detailItemError}</div>
+          ) : detailItem ? (
+            <div className="space-y-2">
+              <div><strong>Name:</strong> {detailItem.pname}</div>
+              <div><strong>Serial No:</strong> {detailItem.serialno}</div>
+              <div><strong>Model:</strong> {detailItem.model}</div>
+              <div><strong>Category:</strong> {detailItem.category}</div>
+              <div><strong>County:</strong> {detailItem.county}</div>
+              <div><strong>ID:</strong> {detailItem.id}</div>
+              {/* Add more fields here if available from backend */}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

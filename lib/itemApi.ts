@@ -1,10 +1,3 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-
 // lib/itemApi.ts
 import type { Item } from "@/types/inventory";
 
@@ -19,10 +12,10 @@ export async function apiFetchItems(token: string, page = 1, limit = 10) {
 }
 
 export async function apiFetchItemById(id: number, token: string) {
-  const res = await fetch(`${API_URL}?id=${id}`, {
+  const res = await fetch(`/api/inventory?id=${id}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error("Failed to fetch item");
+  if (!res.ok) throw new Error("Failed to fetch item details");
   return res.json();
 }
 
@@ -63,4 +56,4 @@ export async function apiDeleteItem(id: number, token: string) {
   });
   if (!res.ok) throw new Error("Failed to delete item");
   return res.json();
-}
+} 
