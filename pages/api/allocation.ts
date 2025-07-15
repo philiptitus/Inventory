@@ -41,10 +41,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(200).json(allocation);
       } else {
         // List view with optional filters
-        const where: any = {};
+        const { search = '' } = req.query;
+        const searchStr = (search as string).trim();
+        let where: any = {};
         if (userId) where.userId = Number(userId);
         if (itemId) where.itemId = Number(itemId);
         if (status) where.status = status;
+        if (searchStr) {
+          where = {
+            ...where,
+            OR: [
+              { status: { contains: searchStr } },
+              { Message: { contains: searchStr } },
+              { user: { is: { name: { contains: searchStr } } } },
+              { user: { is: { email: { contains: searchStr } } } },
+              { item: { is: { pname: { contains: searchStr } } } },
+              { item: { is: { serialno: { contains: searchStr } } } },
+              { item: { is: { model: { contains: searchStr } } } },
+              { item: { is: { category: { contains: searchStr } } } },
+              { item: { is: { county: { contains: searchStr } } } },
+            ],
+          };
+        }
         const [allocations, total] = await Promise.all([
           prisma.allocation.findMany({
             where,

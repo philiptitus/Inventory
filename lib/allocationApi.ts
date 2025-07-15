@@ -3,13 +3,14 @@ import type { Allocation } from "@/types/inventory";
 
 const API_URL = "/api/allocation";
 
-export async function apiFetchAllocations(token: string, params: { userId?: number; itemId?: number; status?: string; page?: number; limit?: number } = {}) {
+export async function apiFetchAllocations(token: string, params: { userId?: number; itemId?: number; status?: string; page?: number; limit?: number; search?: string } = {}) {
   const url = new URL(API_URL, window.location.origin);
   if (params.userId) url.searchParams.append("userId", params.userId.toString());
   if (params.itemId) url.searchParams.append("itemId", params.itemId.toString());
   if (params.status) url.searchParams.append("status", params.status);
   if (params.page) url.searchParams.append("page", params.page.toString());
   if (params.limit) url.searchParams.append("limit", params.limit.toString());
+  if (params.search) url.searchParams.append("search", params.search);
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });

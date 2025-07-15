@@ -27,7 +27,7 @@ import {
   Tag,
   Car,
 } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useInventoryData } from "./hooks/useInventoryData"
 import ItemModal from "./components/modals/ItemModal"
 import MemberModal from "./components/modals/MemberModal"
@@ -54,7 +54,13 @@ import { fetchCounties as apiFetchCounties, createCounty as apiCreateCounty, upd
 import { apiFetchDepartments, apiCreateDepartment, apiUpdateDepartment, apiDeleteDepartment } from "@/lib/departmentApi";
 import { apiFetchItems, apiCreateItem, apiUpdateItem, apiDeleteItem, apiFetchItemById } from "@/lib/itemApi";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { apiFetchAllocations } from "@/lib/allocationApi";
+import { apiFetchAllocations, apiFetchAllocationById, apiDeleteAllocation } from "@/lib/allocationApi";
+import { apiFetchAllUsers } from "@/lib/userApi";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiCreateAllocation } from "@/lib/allocationApi";
+import { toast } from "@/hooks/use-toast";
+import AllocationDetailModal from "@/components/modals/AllocationDetailModal";
+import { Toaster } from '@/components/ui/toaster';
 
 type ActivePage =
   | "dashboard"
@@ -75,8 +81,9 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false)
   const [activePage, setActivePage] = useState<ActivePage>(initialPage || "dashboard")
-  const [searchTerm, setSearchTerm] = useState("")
-
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [deleteAllocationModalOpen, setDeleteAllocationModalOpen] = useState(false);
   // Modal states
   const [itemModalOpen, setItemModalOpen] = useState(false)
   const [memberModalOpen, setMemberModalOpen] = useState(false)
@@ -101,7 +108,7 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
 
   const {
     categories: fakeCategories,
-    members,
+    members: fakeMembers,
     models: fakeModels,
     addCategory,
     updateCategory,
@@ -342,7 +349,7 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
   };
 
   useEffect(() => {
-    if (activePage !== "departments") return;
+    if (activePage !== "departments" && activePage !== "members") return;
     fetchAndSetDepartments();
     // eslint-disable-next-line
   }, [activePage]);
@@ -354,16 +361,46 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
       item.serialno.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const filteredMembers = members.filter(
-    (member) =>
-      member.member_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      member.payroll_no.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const [memberSearchTerm, setMemberSearchTerm] = useState("");
+  const memberSearchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activePage !== "members") return;
+    const fetchUsers = async (search?: string) => {
+      setMembersLoading(true);
+      setMembersError(null);
+      try {
+        const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+        if (!token) throw new Error("No token found");
+        const users = await apiFetchAllUsers(token, search ?? memberSearchTerm);
+        setMembers(users.map((u: any) => ({
+          id: u.id,
+          payroll_no: u.payroll_no || "-",
+          member_name: u.name,
+          department: u.department || "-",
+          office_location: u.county || "-",
+        })));
+      } catch (err: any) {
+        setMembersError(err.message || "Failed to fetch users");
+      }
+      setMembersLoading(false);
+    };
+    if (memberSearchTimeout.current) clearTimeout(memberSearchTimeout.current);
+    memberSearchTimeout.current = setTimeout(() => {
+      fetchUsers(memberSearchTerm);
+    }, 400);
+    return () => {
+      if (memberSearchTimeout.current) clearTimeout(memberSearchTimeout.current);
+    };
+  }, [activePage, memberSearchTerm]);
 
   const filteredAllocations = allocations.filter(
     (allocation) =>
-      allocation.Member_Name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      allocation.Item_Name.toLowerCase().includes(searchTerm.toLowerCase()),
+      (allocation.Member_Name?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
+      (allocation.Item_Name?.toLowerCase() || "").includes(searchTerm.toLowerCase()),
   )
 
   // Handle delete operations
@@ -727,12 +764,12 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
   };
 
   // Fetch items from backend
-  const fetchAndSetItems = async () => {
+  const fetchAndSetItems = async (search?: string) => {
     setItemListLoading(true);
     setItemError(null);
     try {
       const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
-      const data = await apiFetchItems(token || "");
+      const data = await apiFetchItems(token || "", 1, 10, search ?? searchTerm);
       setItems(data.items || []);
     } catch (err: any) {
       setItemError(err.message || "Failed to fetch items");
@@ -744,6 +781,17 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
   useEffect(() => {
     fetchAndSetItems();
   }, []);
+
+  // Debounced search effect
+  useEffect(() => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => {
+      fetchAndSetItems(searchTerm);
+    }, 400);
+    return () => {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    };
+  }, [searchTerm]);
 
   // Create item
   const handleItemSave = async (item: Omit<Item, "id">) => {
@@ -821,6 +869,82 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
     setDetailItemLoading(false);
   };
 
+  // Allocation modal state
+  const [allocationItem, setAllocationItem] = useState<Item | null>(null);
+  const [allocationUsers, setAllocationUsers] = useState<Member[]>([]);
+  const [allocationLoading, setAllocationLoading] = useState(false);
+
+  // Open allocation modal for a specific item
+  const handleOpenAllocate = async (item: Item) => {
+    setAllocationItem(item);
+    setAllocationModalOpen(true);
+    setAllocationLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      if (!token) throw new Error("No token found");
+      const users = await apiFetchAllUsers(token);
+      setAllocationUsers(users.map((u: any) => ({
+        id: u.id,
+        payroll_no: u.payroll_no || "-",
+        member_name: u.name,
+        department: u.department || "-",
+        office_location: u.county || "-",
+        county: u.county || "-",
+      })));
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to fetch users", variant: "destructive" });
+      setAllocationUsers([]);
+    }
+    setAllocationLoading(false);
+  };
+
+  // Handle allocation creation
+  const handleCreateAllocation = async (formData: any) => {
+    setAllocationLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      if (!token) throw new Error("No token found");
+      // Use userId and itemId from formData directly
+      await apiCreateAllocation({ userId: formData.userId, itemId: formData.itemId, message: formData.Message }, token);
+      toast({ title: "Success", description: "Allocation created successfully!", variant: "default" });
+      setAllocationModalOpen(false);
+      setAllocationItem(null);
+      setActivePage("allocations");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to create allocation", variant: "destructive" });
+    }
+    setAllocationLoading(false);
+  };
+
+  // Add state for allocation detail modal
+  const [allocationDetailModalOpen, setAllocationDetailModalOpen] = useState(false);
+  const [allocationDetailId, setAllocationDetailId] = useState<number | null>(null);
+
+  const handleOpenAllocationDetail = (id: number) => {
+    setAllocationDetailId(id);
+    setAllocationDetailModalOpen(true);
+  };
+  const handleCloseAllocationDetail = () => {
+    setAllocationDetailModalOpen(false);
+    setAllocationDetailId(null);
+  };
+
+  const handleConfirmDeleteAllocation = async () => {
+    if (!allocationDetailId) return;
+    setDeleteAllocationLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      await apiDeleteAllocation(allocationDetailId, token || "");
+      toast({ title: "Allocation deleted!", description: `Allocation deleted successfully.`, variant: "default" });
+      setAllocationDetailModalOpen(false);
+      setAllocationDetailId(null);
+      await fetchAndSetAllocations();
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message || "Failed to delete allocation", variant: "destructive" });
+    }
+    setDeleteAllocationLoading(false);
+  };
+
   const renderContent = () => {
     switch (activePage) {
       case "dashboard":
@@ -831,29 +955,72 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
             allocations={allocations}
             categories={categories}
             counties={counties}
+            models={models}
+            departments={departments}
             handleAdd={handleAdd}
+            handleOpenAllocationDetail={handleOpenAllocationDetail}
           />
         )
       case "items":
         return (
-          <ItemsSection
-            items={items}
-            setEditingItem={setEditingItem}
-            setItemModalOpen={setItemModalOpen}
-            handleEdit={handleEditItem}
-            openDeleteModal={handleDeleteItem}
-            openDetailModal={openDetailModal}
-          />
+          <div>
+            <div className="flex items-center mb-4 gap-2">
+              <Input
+                type="text"
+                placeholder="Search items..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full max-w-xs border border-red-200 focus:ring-2 focus:ring-red-200 rounded-lg shadow-sm"
+              />
+            </div>
+            <ItemsSection
+              items={items}
+              setEditingItem={setEditingItem}
+              setItemModalOpen={setItemModalOpen}
+              handleEdit={handleEditItem}
+              openDeleteModal={handleDeleteItem}
+              openDetailModal={openDetailModal}
+              onAllocate={handleOpenAllocate}
+            />
+          </div>
         )
       case "members":
         return (
-          <MembersSection
-            members={filteredMembers}
-            setEditingMember={setEditingMember}
-            setMemberModalOpen={setMemberModalOpen}
-            handleEdit={handleEdit}
-            openDeleteModal={openDeleteModal}
-          />
+          <div>
+            <div className="flex items-center mb-4 gap-2">
+              <Input
+                type="text"
+                placeholder="Search members..."
+                value={memberSearchTerm}
+                onChange={e => setMemberSearchTerm(e.target.value)}
+                className="w-full max-w-xs border border-red-200 focus:ring-2 focus:ring-red-200 rounded-lg shadow-sm"
+              />
+            </div>
+            <MembersSection
+              members={members}
+              setEditingMember={setEditingMember}
+              setMemberModalOpen={setMemberModalOpen}
+              handleEdit={handleEdit}
+              openDeleteModal={openDeleteModal}
+              loading={membersLoading}
+              departments={departments}
+              counties={counties}
+              refreshMembers={() => {
+                // Re-fetch users for the list
+                const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+                if (!token) return;
+                apiFetchAllUsers(token).then(users => {
+                  setMembers(users.map((u: any) => ({
+                    id: u.id,
+                    payroll_no: u.payroll_no || "-",
+                    member_name: u.name,
+                    department: u.department || "-",
+                    office_location: u.county || "-",
+                  })));
+                });
+              }}
+            />
+          </div>
         )
       case "allocations":
         return (
@@ -863,6 +1030,8 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
             setAllocationModalOpen={setAllocationModalOpen}
             handleEdit={handleEdit}
             openDeleteModal={openDeleteModal}
+            openDetailModal={(allocation) => handleOpenAllocationDetail(allocation.id)}
+            loading={allocationListLoading}
           />
         )
       case "categories":
@@ -988,7 +1157,23 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
 
         <div className="flex-1 flex overflow-hidden">
           {/* Dashboard Content */}
-          <div className="flex-1 p-4 lg:p-6 overflow-y-auto">{renderContent()}</div>
+          <div className="flex-1 p-4 lg:p-6 overflow-y-auto">
+            {activePage === "dashboard" ? (
+              <DashboardSection
+                items={items}
+                members={members}
+                allocations={allocations}
+                categories={categories}
+                counties={counties}
+                models={models}
+                departments={departments}
+                handleAdd={handleAdd}
+                handleOpenAllocationDetail={handleOpenAllocationDetail}
+              />
+            ) : (
+              renderContent()
+            )}
+          </div>
 
           {/* Desktop Right Sidebar */}
           <div className="hidden xl:flex w-80 bg-[#292929] text-white">
@@ -1022,18 +1207,19 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
         onSave={addMember}
         onUpdate={updateMember}
         member={editingMember}
-        departments={departments}
+        departments={departments}kk
         counties={counties}
       />
 
       <AllocationModal
         isOpen={allocationModalOpen}
-        onClose={() => setAllocationModalOpen(false)}
-        // TODO: Implement allocation creation and pass onSave here
-        // TODO: Implement allocation update and pass onUpdate here
-        allocation={editingAllocation}
-        members={members}
-        items={items}
+        onClose={() => { setAllocationModalOpen(false); setAllocationItem(null); }}
+        onSave={handleCreateAllocation}
+        onUpdate={() => {}}
+        allocation={undefined}
+        members={allocationUsers}
+        items={allocationItem ? [allocationItem] : []}
+        loading={allocationLoading}
       />
 
       <CategoryModal
@@ -1043,6 +1229,14 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
         category={editingCategory}
         loading={activePage === "categories" ? categoryLoading : undefined}
       />
+
+<ModelModal
+  isOpen={modelModalOpen}
+  onClose={() => setModelModalOpen(false)}
+  onSave={handleModelSave}
+  onUpdate={handleUpdateModel}
+  model={editingModel}
+/>
 
       <CountyModal
         isOpen={countyModalOpen}
@@ -1230,6 +1424,15 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {/* Allocation Detail Modal implementation */}
+      <AllocationDetailModal
+        isOpen={allocationDetailModalOpen}
+        allocationId={allocationDetailId}
+        onClose={handleCloseAllocationDetail}
+        onDeleted={fetchAndSetAllocations}
+      />
+      <Toaster />
     </div>
   )
 }

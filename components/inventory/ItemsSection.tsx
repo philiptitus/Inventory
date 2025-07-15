@@ -19,6 +19,7 @@ interface ItemsSectionProps {
   handleEdit: (item: Item) => void;
   openDeleteModal: (item: Item) => void;
   openDetailModal: (item: Item) => void;
+  onAllocate: (item: Item) => void;
 }
 
 const ItemsSection: React.FC<ItemsSectionProps> = ({
@@ -28,6 +29,7 @@ const ItemsSection: React.FC<ItemsSectionProps> = ({
   handleEdit,
   openDeleteModal,
   openDetailModal,
+  onAllocate,
 }) => (
   <Card className="bg-white border border-[#d9d9d9]">
     <CardHeader>
@@ -73,6 +75,15 @@ const ItemsSection: React.FC<ItemsSectionProps> = ({
                     </Button>
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEdit(item)}>
                       <Edit className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-[#0a9b21] hover:text-[#0a9b21]"
+                      onClick={() => onAllocate(item)}
+                      title="Allocate Item"
+                    >
+                      <Plus className="w-3 h-3" />
                     </Button>
                     <Button
                       variant="ghost"

@@ -4,7 +4,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,62 +23,8 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-
-function SidebarContent() {
-  return (
-    <div className="flex flex-col h-full">
-      <div className="p-6 border-b border-[#483f3f]">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-            <span className="text-[#292929] font-bold text-lg">Y</span>
-          </div>
-          <span className="text-xl font-bold">YouthFund</span>
-        </div>
-      </div>
-      <nav className="flex-1 p-4">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-[#483f3f] text-white">
-            <Home className="w-5 h-5" />
-            <span>Home</span>
-            <div className="w-2 h-2 bg-[#0a9b21] rounded-full ml-auto"></div>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#8b8989] hover:bg-[#483f3f] hover:text-white cursor-pointer">
-            <Package className="w-5 h-5" />
-            <span>Product</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#8b8989] hover:bg-[#483f3f] hover:text-white cursor-pointer">
-            <ShoppingCart className="w-5 h-5" />
-            <span>Order</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#8b8989] hover:bg-[#483f3f] hover:text-white cursor-pointer">
-            <CreditCard className="w-5 h-5" />
-            <span>Payment</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#8b8989] hover:bg-[#483f3f] hover:text-white cursor-pointer">
-            <BarChart3 className="w-5 h-5" />
-            <span>Statistics</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#8b8989] hover:bg-[#483f3f] hover:text-white cursor-pointer">
-            <Truck className="w-5 h-5" />
-            <span>Shipping</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#8b8989] hover:bg-[#483f3f] hover:text-white cursor-pointer">
-            <Users className="w-5 h-5" />
-            <span>Manage User</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#8b8989] hover:bg-[#483f3f] hover:text-white cursor-pointer">
-            <Settings className="w-5 h-5" />
-            <span>Setting</span>
-          </div>
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-[#8b8989] hover:bg-[#483f3f] hover:text-white cursor-pointer">
-            <LogOut className="w-5 h-5" />
-            <span>Log Out</span>
-          </div>
-        </div>
-      </nav>
-    </div>
-  );
-}
+import Sidebar from "@/components/inventory/Sidebar";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function ProfilePage() {
   const [user, setUser] = useState<any>(null);
@@ -92,6 +37,9 @@ export default function ProfilePage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const router = useRouter();
+
+  // Sidebar state for active page
+  const [activePage, setActivePage] = useState("dashboard");
 
   // Form state
   const [form, setForm] = useState({ name: "", phone: "", county: "" });
@@ -202,52 +150,60 @@ export default function ProfilePage() {
     setShowDeleteConfirm(false);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    toast({ title: "Logged out", description: "You have been logged out.", variant: "default" });
+    setTimeout(() => router.replace("/"), 1200);
+  };
+
   return (
-    <div className="flex h-screen bg-[#fffcfc] overflow-hidden">
+    <div className="flex h-screen bg-gradient-to-br from-red-100 via-white to-red-200 overflow-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden lg:flex w-64 bg-[#292929] text-white flex-col">
-        <SidebarContent />
+        <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={handleLogout} />
       </div>
       {/* Mobile Sidebar */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-64 bg-[#292929] text-white p-0 border-r-0">
-          <SidebarContent />
+          <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={handleLogout} />
         </SheetContent>
       </Sheet>
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="bg-white p-4 lg:p-6 border-b border-[#d9d9d9] flex items-center justify-between">
+        <div className="bg-white/80 backdrop-blur-md p-4 lg:p-6 border-b border-[#d9d9d9] flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setSidebarOpen(true)}>
               <Menu className="w-5 h-5" />
             </Button>
             <div>
               <h1 className="text-xl lg:text-2xl font-semibold text-[#1c1b1f]">Profile</h1>
-              <p className="text-red-200 text-sm lg:text-base">Your account details</p>
+              <p className="text-red-400 text-sm lg:text-base">Your account details</p>
             </div>
           </div>
-          <Avatar className="w-10 h-10">
+          <Avatar className="w-10 h-10 ring-2 ring-red-200 shadow-md">
             <AvatarImage src="/placeholder-user.jpg" />
             <AvatarFallback>U</AvatarFallback>
           </Avatar>
         </div>
         <div className="flex-1 flex justify-center items-center p-4 lg:p-6">
-          <Card className="w-full max-w-md mx-auto shadow-2xl border-0 bg-white/90 backdrop-blur-lg rounded-3xl p-0">
-            <div className="flex flex-col items-center py-8 px-6">
+          <div className="w-full max-w-md mx-auto">
+            <ScrollArea className="h-[80vh] rounded-3xl">
+              <Card className="shadow-2xl border-0 bg-white/70 dark:bg-[#2a1a1a]/80 backdrop-blur-xl rounded-3xl p-0 transition-all duration-300">
+                <div className="flex flex-col items-center py-10 px-8">
               {loading ? (
                 <div className="w-full flex flex-col gap-4">
-                  <Skeleton className="h-24 w-24 mx-auto" />
-                  <Skeleton className="h-8 w-2/3 mx-auto" />
-                  <Skeleton className="h-6 w-1/2 mx-auto" />
-                  <Skeleton className="h-6 w-1/2 mx-auto" />
-                  <Skeleton className="h-6 w-1/2 mx-auto" />
+                      <Skeleton className="h-24 w-24 mx-auto rounded-full" />
+                      <Skeleton className="h-8 w-2/3 mx-auto rounded-lg" />
+                      <Skeleton className="h-6 w-1/2 mx-auto rounded-lg" />
+                      <Skeleton className="h-6 w-1/2 mx-auto rounded-lg" />
+                      <Skeleton className="h-6 w-1/2 mx-auto rounded-lg" />
                 </div>
               ) : editMode ? (
                 <form onSubmit={handleSave} className="flex flex-col items-center gap-4 w-full">
-                  <Avatar className="w-24 h-24 mb-2 shadow-lg ring-4 ring-red-100">
+                      <Avatar className="w-24 h-24 mb-2 shadow-lg ring-4 ring-red-200">
                     <AvatarImage src="/placeholder-user.jpg" />
-                    <AvatarFallback className="text-3xl">{user?.name?.[0]?.toUpperCase() ?? "U"}</AvatarFallback>
+                        <AvatarFallback className="text-3xl bg-red-100 text-red-700">{user?.name?.[0]?.toUpperCase() ?? "U"}</AvatarFallback>
                   </Avatar>
                   <input
                     type="text"
@@ -255,7 +211,7 @@ export default function ProfilePage() {
                     value={form.name}
                     onChange={handleChange}
                     placeholder="Name"
-                    className="w-full rounded-lg border px-4 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-red-200"
+                        className="w-full rounded-lg border px-4 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-red-200 bg-white/80 shadow-sm"
                     required
                   />
                   <input
@@ -264,7 +220,7 @@ export default function ProfilePage() {
                     value={form.phone}
                     onChange={handleChange}
                     placeholder="Phone"
-                    className="w-full rounded-lg border px-4 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-red-200"
+                        className="w-full rounded-lg border px-4 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-red-200 bg-white/80 shadow-sm"
                     required
                   />
                   <input
@@ -273,21 +229,21 @@ export default function ProfilePage() {
                     value={form.county}
                     onChange={handleChange}
                     placeholder="County"
-                    className="w-full rounded-lg border px-4 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-red-200"
+                        className="w-full rounded-lg border px-4 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-red-200 bg-white/80 shadow-sm"
                     required
                   />
                   <div className="flex gap-2 w-full justify-center mt-2">
                     <button
                       type="button"
                       onClick={handleCancel}
-                      className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition"
+                          className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition shadow"
                       disabled={editLoading}
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-600 transition"
+                          className="px-4 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-600 transition shadow"
                       disabled={editLoading}
                     >
                       {editLoading ? "Saving..." : "Save"}
@@ -298,31 +254,31 @@ export default function ProfilePage() {
                 </form>
               ) : (
                 <>
-                  <Avatar className="w-24 h-24 mb-4 shadow-lg ring-4 ring-red-100">
+                      <Avatar className="w-24 h-24 mb-4 shadow-lg ring-4 ring-red-200">
                     <AvatarImage src="/placeholder-user.jpg" />
-                    <AvatarFallback className="text-3xl">{user?.name?.[0]?.toUpperCase() ?? "U"}</AvatarFallback>
+                        <AvatarFallback className="text-3xl bg-red-100 text-red-700">{user?.name?.[0]?.toUpperCase() ?? "U"}</AvatarFallback>
                   </Avatar>
-                  <h2 className="text-3xl font-extrabold mb-1 text-[#1c1b1f]">{user?.name}</h2>
-                  <Badge className={`mb-4 px-4 py-1 rounded-full text-sm ${user?.isAdmin ? "bg-red-200 text-red-800" : "bg-gray-200 text-gray-700"}`}>
+                      <h2 className="text-3xl font-extrabold mb-1 text-[#1c1b1f] drop-shadow-lg">{user?.name}</h2>
+                      <Badge className={`mb-4 px-4 py-1 rounded-full text-sm shadow ${user?.isAdmin ? "bg-red-200 text-red-800" : "bg-gray-200 text-gray-700"}`}>
                     {user?.isAdmin ? "Admin" : "User"}
                   </Badge>
                   <div className="w-full flex flex-col gap-3 text-center">
                     <div className="flex items-center justify-center gap-2 text-gray-600">
-                      <Mail className="w-5 h-5" />
+                          <Mail className="w-5 h-5 text-red-400" />
                       <span>{user?.email}</span>
                     </div>
                     <div className="flex items-center justify-center gap-2 text-gray-600">
-                      <Phone className="w-5 h-5" />
+                          <Phone className="w-5 h-5 text-red-400" />
                       <span>{user?.phone}</span>
                     </div>
                     <div className="flex items-center justify-center gap-2 text-gray-600">
-                      <MapPin className="w-5 h-5" />
+                          <MapPin className="w-5 h-5 text-red-400" />
                       <span>{user?.county}</span>
                     </div>
                   </div>
                   <button
                     onClick={handleEdit}
-                    className="mt-6 px-6 py-2 rounded-lg bg-red-500 text-white font-semibold hover:bg-red-600 transition shadow"
+                        className="mt-6 px-6 py-2 rounded-lg bg-gradient-to-r from-red-500 to-pink-400 text-white font-semibold hover:from-red-600 hover:to-pink-500 transition shadow-lg"
                   >
                     Edit Profile
                   </button>
@@ -362,6 +318,8 @@ export default function ProfilePage() {
               )}
             </div>
           </Card>
+            </ScrollArea>
+          </div>
         </div>
         <Toaster />
       </div>

@@ -65,12 +65,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } else {
       // Any authenticated user can get list
       try {
+        const { search = '' } = req.query;
+        const searchStr = (search as string).trim();
+        const where = searchStr ? { Dep_name: { contains: searchStr } } : undefined;
         const [departments, total] = await Promise.all([
           prisma.department.findMany({
             skip: (pageNum - 1) * pageSize,
             take: pageSize,
+            ...(where ? { where } : {}),
           }),
-          prisma.department.count(),
+          prisma.department.count({ ...(where ? { where } : {}) }),
         ]);
         return res.status(200).json({
           departments,

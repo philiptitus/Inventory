@@ -53,13 +53,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       } else {
-        // Paginated list of models
+        // Paginated list of models with optional search
+        const { search = '' } = req.query;
+        const searchStr = (search as string).trim();
+        const where = searchStr ? { model_name: { contains: searchStr } } : undefined;
         const [models, total] = await Promise.all([
           prisma.model.findMany({
             skip: (pageNum - 1) * pageSize,
             take: pageSize,
+            ...(where ? { where } : {}),
           }),
-          prisma.model.count(),
+          prisma.model.count({ ...(where ? { where } : {}) }),
         ]);
         return res.status(200).json({
           models,

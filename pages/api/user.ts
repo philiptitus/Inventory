@@ -36,6 +36,52 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  // GET all users (admin only)
+  if (req.method === 'GET' && req.query.all === 'true') {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      res.status(401).json({ error: 'No token provided' });
+      return;
+    }
+    const payload = verifyToken(token);
+    if (!payload || !payload.isAdmin) {
+      res.status(403).json({ error: 'Admin access required' });
+      return;
+    }
+    try {
+      const { search = '' } = req.query;
+      const searchStr = (search as string).trim();
+      const where = searchStr
+        ? {
+            OR: [
+              { name: { contains: searchStr } },
+              { email: { contains: searchStr } },
+              { phone: { contains: searchStr } },
+              { county: { contains: searchStr } },
+              { department: { is: { Dep_name: { contains: searchStr } } } },
+            ],
+          }
+        : undefined;
+      const users = await prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          isAdmin: true,
+          department: true,
+          county: true,
+          items: true
+        }
+      });
+      res.status(200).json(users);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch users', details: error.message });
+    }
+    return;
+  }
+
   // GET user profile
   if (req.method === 'GET') {
     const token = getTokenFromHeader(req);
@@ -146,15 +192,63 @@ export default async function handler(
     return;
   }
 
-  // POST register/login
+  // POST register/login/admin_add
   if (req.method === 'POST') {
     const { action, name, email, password, phone, isAdmin, department, county } = req.body;
-    
-    if (!action || !['register', 'login'].includes(action)) {
-      res.status(400).json({ error: 'Action must be register or login' });
+    if (!action || !['register', 'login', 'admin_add'].includes(action)) {
+      res.status(400).json({ error: 'Action must be register, login, or admin_add' });
       return;
     }
 
+    if (action === 'admin_add') {
+      const token = getTokenFromHeader(req);
+      if (!token) {
+        res.status(401).json({ error: 'No token provided' });
+        return;
+      }
+      const payload = verifyToken(token);
+      if (!payload || !payload.isAdmin) {
+        res.status(403).json({ error: 'Admin access required' });
+        return;
+      }
+      const { name, email, password, phone, isAdmin, departmentId, county } = req.body;
+      if (!name || !email || !password || !phone || !county) {
+        res.status(400).json({ error: 'Missing required fields: name, email, password, phone, county' });
+        return;
+      }
+      try {
+        const existingUser = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+          res.status(409).json({ error: 'User already exists' });
+          return;
+        }
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const userData: any = {
+          name,
+          email,
+          password: hashedPassword,
+          phone,
+          isAdmin: !!isAdmin,
+          county
+        };
+        if (departmentId) userData.departmentId = departmentId;
+        const user = await prisma.user.create({
+          data: userData,
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isAdmin: true
+          }
+        });
+        res.status(201).json({ message: 'User added successfully', user });
+      } catch (error: any) {
+        res.status(500).json({ error: 'Failed to add user', details: error.message });
+      }
+      return;
+    }
+
+    // Register
     if (action === 'register') {
       if (!name || !email || !password || !phone || !county) {
         res.status(400).json({ 
@@ -268,6 +362,123 @@ export default async function handler(
       }
       return;
     }
+  }
+
+  // ADMIN: GET user by ID
+  if (req.method === 'GET' && req.query.id) {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      res.status(401).json({ error: 'No token provided' });
+      return;
+    }
+    const payload = verifyToken(token);
+    if (!payload || !payload.isAdmin) {
+      res.status(403).json({ error: 'Admin access required' });
+      return;
+    }
+    const userId = parseInt(req.query.id as string, 10);
+    if (isNaN(userId)) {
+      res.status(400).json({ error: 'Invalid user ID' });
+      return;
+    }
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          isAdmin: true,
+          department: true,
+          county: true,
+          items: true
+        }
+      });
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+      res.status(200).json(user);
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to fetch user', details: error.message });
+    }
+    return;
+  }
+
+  // ADMIN: DELETE user by ID
+  if (req.method === 'DELETE' && req.query.id) {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      res.status(401).json({ error: 'No token provided' });
+      return;
+    }
+    const payload = verifyToken(token);
+    if (!payload || !payload.isAdmin) {
+      res.status(403).json({ error: 'Admin access required' });
+      return;
+    }
+    const userId = parseInt(req.query.id as string, 10);
+    if (isNaN(userId)) {
+      res.status(400).json({ error: 'Invalid user ID' });
+      return;
+    }
+    try {
+      await prisma.user.delete({ where: { id: userId } });
+      res.status(200).json({ message: 'User deleted successfully' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to delete user', details: error.message });
+    }
+    return;
+  }
+
+  // ADMIN: Add user (not self-register)
+  if (req.method === 'POST' && req.body.action === 'admin_add') {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      res.status(401).json({ error: 'No token provided' });
+      return;
+    }
+    const payload = verifyToken(token);
+    if (!payload || !payload.isAdmin) {
+      res.status(403).json({ error: 'Admin access required' });
+      return;
+    }
+    const { name, email, password, phone, isAdmin, departmentId, county } = req.body;
+    if (!name || !email || !password || !phone || !county) {
+      res.status(400).json({ error: 'Missing required fields: name, email, password, phone, county' });
+      return;
+    }
+    try {
+      const existingUser = await prisma.user.findUnique({ where: { email } });
+      if (existingUser) {
+        res.status(409).json({ error: 'User already exists' });
+        return;
+      }
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const userData: any = {
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        isAdmin: !!isAdmin,
+        county
+      };
+      if (departmentId) userData.departmentId = departmentId;
+      const user = await prisma.user.create({
+        data: userData,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          isAdmin: true
+        }
+      });
+      res.status(201).json({ message: 'User added successfully', user });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to add user', details: error.message });
+    }
+    return;
   }
 
   // Method not allowed

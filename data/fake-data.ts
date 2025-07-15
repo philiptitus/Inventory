@@ -39,7 +39,6 @@ export const fakeMembers: Member[] = [
     payroll_no: "EMP001",
     member_name: "John Doe",
     department: "Information Technology",
-    office_location: "Nairobi HQ",
     county: "Nairobi",
   },
   {
@@ -47,7 +46,6 @@ export const fakeMembers: Member[] = [
     payroll_no: "EMP002",
     member_name: "Jane Smith",
     department: "Human Resources",
-    office_location: "Mombasa Branch",
     county: "Mombasa",
   },
   {
@@ -55,7 +53,6 @@ export const fakeMembers: Member[] = [
     payroll_no: "EMP003",
     member_name: "Mike Johnson",
     department: "Finance",
-    office_location: "Kisumu Office",
     county: "Kisumu",
   },
   {
@@ -63,7 +60,6 @@ export const fakeMembers: Member[] = [
     payroll_no: "EMP004",
     member_name: "Sarah Wilson",
     department: "Operations",
-    office_location: "Nakuru Branch",
     county: "Nakuru",
   },
   {
@@ -71,7 +67,6 @@ export const fakeMembers: Member[] = [
     payroll_no: "EMP005",
     member_name: "David Brown",
     department: "Administration",
-    office_location: "Eldoret Office",
     county: "Eldoret",
   },
 ]
@@ -127,7 +122,6 @@ export const fakeAllocations: Allocation[] = [
     ID_PF_No: "EMP001",
     Member_Name: "John Doe",
     Department: "Information Technology",
-    Office_Location: "Nairobi HQ",
     County: "Nairobi",
     Item_Serial_No: "LP001234",
     Category: "Electronics",
@@ -141,7 +135,6 @@ export const fakeAllocations: Allocation[] = [
     ID_PF_No: "EMP002",
     Member_Name: "Jane Smith",
     Department: "Human Resources",
-    Office_Location: "Mombasa Branch",
     County: "Mombasa",
     Item_Serial_No: "FU005678",
     Category: "Furniture",
@@ -155,7 +148,6 @@ export const fakeAllocations: Allocation[] = [
     ID_PF_No: "EMP003",
     Member_Name: "Mike Johnson",
     Department: "Finance",
-    Office_Location: "Kisumu Office",
     County: "Kisumu",
     Item_Serial_No: "VH009876",
     Category: "Vehicles",

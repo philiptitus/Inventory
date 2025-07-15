@@ -25,7 +25,6 @@ export interface Member {
   payroll_no: string
   member_name: string
   department: string
-  office_location: string
   county?: string // Added for allocation compatibility
 }
 
@@ -46,7 +45,6 @@ export interface Allocation {
   ID_PF_No: string // Member Payroll/ID Number
   Member_Name: string
   Department: string
-  Office_Location: string
   County: string
   Item_Serial_No: string
   Category: string
@@ -54,6 +52,8 @@ export interface Allocation {
   Item_Name: string
   Date_Allocated: string
   Message: string
+  userId?: number
+  itemId?: number
 }
 
 export interface User {

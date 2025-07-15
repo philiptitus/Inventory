@@ -21,10 +21,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activePage, setActivePage, onLogout }
   <div className="flex flex-col h-full">
     <div className="p-6 border-b border-red-700">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-          <span className="text-red-900 font-bold text-lg">Y</span>
+        <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center overflow-hidden">
+          <img src="https://www.youthfund.go.ke/wp-content/uploads/2016/08/logo2.jpg" alt="YouthFund Logo" className="w-full h-full object-contain" />
         </div>
-        <span className="text-xl font-bold">YouthFund</span>
+        <span className="text-base font-bold leading-tight">YouthFund Inventory System</span>
       </div>
     </div>
     <nav className="flex-1 p-4">

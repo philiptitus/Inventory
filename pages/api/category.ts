@@ -57,13 +57,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       } else {
-        // Paginated list of categories
+        // Paginated list of categories with optional search
+        const { search = '' } = req.query;
+        const searchStr = (search as string).trim();
+        const where = searchStr ? { category_name: { contains: searchStr } } : undefined;
         const [categories, total] = await Promise.all([
           prisma.category.findMany({
             skip: (pageNum - 1) * pageSize,
             take: pageSize,
+            ...(where ? { where } : {}),
           }),
-          prisma.category.count(),
+          prisma.category.count({ ...(where ? { where } : {}) }),
         ]);
         return res.status(200).json({
           categories,

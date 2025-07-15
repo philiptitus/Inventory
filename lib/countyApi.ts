@@ -1,7 +1,8 @@
 // County API logic for Inventory Dashboard
 
-export async function fetchCounties(page = 1, limit = 10, token?: string) {
-  const res = await fetch(`/api/county?page=${page}&limit=${limit}`, {
+export async function fetchCounties(page = 1, limit = 10, token?: string, search?: string) {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+  const res = await fetch(`/api/county?page=${page}&limit=${limit}${searchParam}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error("Failed to fetch counties");

@@ -47,7 +47,10 @@ interface DashboardSectionProps {
   allocations: Allocation[];
   categories: Category[];
   counties: County[];
+  models: any[];
+  departments: any[];
   handleAdd: (type: string) => void;
+  handleOpenAllocationDetail?: (allocationId: number) => void;
 }
 
 const DashboardSection: React.FC<DashboardSectionProps> = ({
@@ -56,7 +59,10 @@ const DashboardSection: React.FC<DashboardSectionProps> = ({
   allocations,
   categories,
   counties,
+  models,
+  departments,
   handleAdd,
+  handleOpenAllocationDetail,
 }) => (
   <>
     {/* Metrics Cards */}
@@ -161,75 +167,60 @@ const DashboardSection: React.FC<DashboardSectionProps> = ({
         </CardContent>
       </Card>
     </div>
-    {/* Recent Allocations Table */}
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 lg:gap-6">
     <Card className="bg-white border border-[#d9d9d9]">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-[#1c1b1f] text-lg">Recent Allocations</CardTitle>
-          <Button size="sm" className="bg-[#0a9b21] hover:bg-[#0a9b21]/90" onClick={() => handleAdd("allocation")}> 
-            <Plus className="w-4 h-4 mr-2" />
-            New Allocation
-          </Button>
-        </div>
+          <CardTitle className="text-[#1c1b1f] text-lg">Items by Model</CardTitle>
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-[#d9d9d9]">
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Member</th>
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Item</th>
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Serial No</th>
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Department</th>
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Date Allocated</th>
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Status</th>
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allocations.slice(0, 5).map((allocation) => (
-                <tr key={allocation.id} className="border-b border-[#d9d9d9]">
-                  <td className="py-3 px-4">
+        <CardContent>
+          <div className="space-y-4">
+            {models && models.length > 0 ? models.map((model) => {
+              const count = items.filter((item) => item.model === model.model_name).length;
+              return (
+                <div key={model.id} className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{model.model_name}</span>
                     <div className="flex items-center gap-2">
-                      <Avatar className="w-6 h-6 lg:w-8 lg:h-8">
-                        <AvatarFallback className="text-xs">
-                          {allocation.Member_Name.split(" ")
-                            .map((n) => n[0])
-                            .join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium text-sm">{allocation.Member_Name}</p>
-                        <p className="text-xs text-red-200">{allocation.ID_PF_No}</p>
-                      </div>
+                    <div className="w-20 h-2 bg-[#d9d9d9] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#be0606] rounded-full"
+                        style={{ width: `${items.length > 0 ? (count / items.length) * 100 : 0}%` }}
+                      ></div>
                     </div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div>
-                      <p className="font-medium text-sm">{allocation.Item_Name}</p>
-                      <p className="text-xs text-red-200">{allocation.Model}</p>
+                    <span className="text-sm font-bold text-[#be0606]">{count}</span>
+                  </div>
+                </div>
+              );
+            }) : <div className="text-sm text-gray-400">No models found.</div>}
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="bg-white border border-[#d9d9d9]">
+        <CardHeader>
+          <CardTitle className="text-[#1c1b1f] text-lg">Items by Department</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {departments && departments.length > 0 ? departments.map((department) => {
+              const count = items.filter((item) => (item.department || '-') === department.Dep_name).length;
+              return (
+                <div key={department.id} className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{department.Dep_name}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-20 h-2 bg-[#d9d9d9] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#0c1cab] rounded-full"
+                        style={{ width: `${items.length > 0 ? (count / items.length) * 100 : 0}%` }}
+                      ></div>
                     </div>
-                  </td>
-                  <td className="py-3 px-4 text-sm">{allocation.Item_Serial_No}</td>
-                  <td className="py-3 px-4 text-sm">{allocation.Department}</td>
-                  <td className="py-3 px-4 text-sm">{allocation.Date_Allocated}</td>
-                  <td className="py-3 px-4">
-                    <Badge variant="secondary" className="bg-[#0a9b21]/10 text-[#0a9b21] text-xs">
-                      Active
-                    </Badge>
-                  </td>
-                  <td className="py-3 px-4">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                      <Eye className="w-3 h-3" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <span className="text-sm font-bold text-[#0c1cab]">{count}</span>
+                  </div>
+                </div>
+              );
+            }) : <div className="text-sm text-gray-400">No departments found.</div>}
         </div>
       </CardContent>
     </Card>
+    </div>
   </>
 );
 

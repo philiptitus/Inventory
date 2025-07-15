@@ -3,8 +3,9 @@ import type { Item } from "@/types/inventory";
 
 const API_URL = "/api/inventory";
 
-export async function apiFetchItems(token: string, page = 1, limit = 10) {
-  const res = await fetch(`${API_URL}?page=${page}&limit=${limit}`, {
+export async function apiFetchItems(token: string, page = 1, limit = 10, search?: string) {
+  const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
+  const res = await fetch(`${API_URL}?page=${page}&limit=${limit}${searchParam}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error("Failed to fetch items");

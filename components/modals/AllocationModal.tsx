@@ -19,6 +19,7 @@ interface AllocationModalProps {
   allocation?: Allocation
   members: Member[]
   items: Item[]
+  loading?: boolean
 }
 
 export default function AllocationModal({
@@ -29,9 +30,10 @@ export default function AllocationModal({
   allocation,
   members,
   items,
+  loading = false,
 }: AllocationModalProps) {
   const [formData, setFormData] = useState({
-    ID_PF_No: "",
+    userId: "",
     Member_Name: "",
     Department: "",
     Office_Location: "",
@@ -42,14 +44,19 @@ export default function AllocationModal({
     Item_Name: "",
     Date_Allocated: "",
     Message: "",
+    itemId: "",
   })
 
   useEffect(() => {
     if (allocation) {
-      setFormData(allocation)
+      setFormData({
+        ...allocation,
+        userId: allocation.userId ? allocation.userId.toString() : "",
+        itemId: allocation.itemId ? allocation.itemId.toString() : "",
+      })
     } else {
       setFormData({
-        ID_PF_No: "",
+        userId: "",
         Member_Name: "",
         Department: "",
         Office_Location: "",
@@ -60,16 +67,17 @@ export default function AllocationModal({
         Item_Name: "",
         Date_Allocated: new Date().toISOString().split("T")[0],
         Message: "",
+        itemId: items && items.length === 1 ? items[0].id.toString() : "",
       })
     }
-  }, [allocation, isOpen])
+  }, [allocation, isOpen, items])
 
-  const handleMemberChange = (payrollNo: string) => {
-    const selectedMember = members.find((m) => m.payroll_no === payrollNo)
+  const handleMemberChange = (id: string) => {
+    const selectedMember = members.find((m) => m.id.toString() === id)
     if (selectedMember) {
       setFormData({
         ...formData,
-        ID_PF_No: selectedMember.payroll_no,
+        userId: selectedMember.id.toString(),
         Member_Name: selectedMember.member_name,
         Department: selectedMember.department,
         Office_Location: selectedMember.office_location,
@@ -87,38 +95,45 @@ export default function AllocationModal({
         Category: selectedItem.category,
         Model: selectedItem.model,
         Item_Name: selectedItem.pname,
+        itemId: selectedItem.id.toString(),
       })
     }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    // Ensure userId and itemId are numbers for the API
+    const userIdNum = formData.userId ? Number(formData.userId) : undefined;
+    const itemIdNum = formData.itemId ? Number(formData.itemId) : undefined;
     if (allocation) {
-      onUpdate(allocation.id, formData)
+      onUpdate(allocation.id, { ...formData, userId: userIdNum, itemId: itemIdNum });
     } else {
-      onSave(formData)
+      onSave({ userId: userIdNum, itemId: itemIdNum, message: formData.Message });
     }
     onClose()
   }
 
+  // Debug logs to help diagnose dropdown selection issue
+  console.log("formData.userId:", formData.userId)
+  console.log("members:", members)
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-xl w-full max-h-[80vh] overflow-y-auto bg-background shadow-lg rounded-lg">
         <DialogHeader>
           <DialogTitle>{allocation ? "Edit Allocation" : "New Allocation"}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className={`space-y-4 ${loading ? 'pointer-events-none opacity-60' : ''}`}>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="member">Member</Label>
-              <Select value={formData.ID_PF_No} onValueChange={handleMemberChange}>
+              <Select value={formData.userId} onValueChange={handleMemberChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select member" />
                 </SelectTrigger>
                 <SelectContent>
                   {members.map((member) => (
-                    <SelectItem key={member.id} value={member.payroll_no}>
-                      {member.member_name} ({member.payroll_no})
+                    <SelectItem key={member.id} value={member.id.toString()}>
+                      {member.member_name} ({member.id})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -208,6 +223,14 @@ export default function AllocationModal({
             <Button type="submit">{allocation ? "Update" : "Create"} Allocation</Button>
           </div>
         </form>
+        {loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white bg-opacity-70 z-10">
+            <div className="mb-2 text-red-200 text-sm">Processing allocation...</div>
+            <div className="w-14 h-14">
+              <div className="animate-spin rounded-full h-14 w-14 border-t-4 border-b-4 border-[#0a9b21] border-opacity-30"></div>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

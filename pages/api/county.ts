@@ -53,13 +53,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
         });
       } else {
-        // Paginated list of counties
+        // Paginated list of counties with optional search
+        const { search = '' } = req.query;
+        const searchStr = (search as string).trim();
+        const where = searchStr ? { county_name: { contains: searchStr } } : undefined;
         const [counties, total] = await Promise.all([
           prisma.county.findMany({
             skip: (pageNum - 1) * pageSize,
             take: pageSize,
+            ...(where ? { where } : {}),
           }),
-          prisma.county.count(),
+          prisma.county.count({ ...(where ? { where } : {}) }),
         ]);
         return res.status(200).json({
           counties,

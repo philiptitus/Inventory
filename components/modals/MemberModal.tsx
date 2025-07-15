@@ -33,7 +33,6 @@ export default function MemberModal({
     payroll_no: "",
     member_name: "",
     department: "",
-    office_location: "",
     county: "",
   })
 
@@ -43,7 +42,6 @@ export default function MemberModal({
         payroll_no: member.payroll_no,
         member_name: member.member_name,
         department: member.department,
-        office_location: member.office_location,
         county: member.county || "",
       })
     } else {
@@ -51,7 +49,6 @@ export default function MemberModal({
         payroll_no: "",
         member_name: "",
         department: "",
-        office_location: "",
         county: "",
       })
     }
@@ -109,15 +106,6 @@ export default function MemberModal({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div>
-            <Label htmlFor="office_location">Office Location</Label>
-            <Input
-              id="office_location"
-              value={formData.office_location}
-              onChange={(e) => setFormData({ ...formData, office_location: e.target.value })}
-              required
-            />
           </div>
           <div>
             <Label htmlFor="county">County</Label>

@@ -39,16 +39,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (!item) return res.status(404).json({ error: 'Item not found' });
         return res.status(200).json(item);
       } else {
-        // Paginated list view
-        const { page = '1', limit = '10' } = req.query;
+        // Paginated list view with optional search
+        const { page = '1', limit = '10', search = '' } = req.query;
         const pageNum = parseInt(page as string, 10) || 1;
         const pageSize = parseInt(limit as string, 10) || 10;
+        const searchStr = (search as string).trim();
+        const where = searchStr
+          ? {
+              OR: [
+                { pname: { contains: searchStr } },
+                { serialno: { contains: searchStr } },
+                { model: { contains: searchStr } },
+                { category: { contains: searchStr } },
+                { county: { contains: searchStr } },
+              ],
+            }
+          : undefined;
         const [items, total] = await Promise.all([
           prisma.item.findMany({
             skip: (pageNum - 1) * pageSize,
             take: pageSize,
+            ...(where ? { where } : {}),
           }),
-          prisma.item.count(),
+          prisma.item.count({ ...(where ? { where } : {}) }),
         ]);
         return res.status(200).json({
           items,
