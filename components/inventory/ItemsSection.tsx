@@ -20,6 +20,7 @@ interface ItemsSectionProps {
   openDeleteModal: (item: Item) => void;
   openDetailModal: (item: Item) => void;
   onAllocate: (item: Item) => void;
+  isAdmin?: boolean;
 }
 
 const ItemsSection: React.FC<ItemsSectionProps> = ({
@@ -30,19 +31,22 @@ const ItemsSection: React.FC<ItemsSectionProps> = ({
   openDeleteModal,
   openDetailModal,
   onAllocate,
+  isAdmin = false,
 }) => (
   <Card className="bg-white border border-[#d9d9d9]">
     <CardHeader>
       <div className="flex items-center justify-between">
         <CardTitle className="text-[#1c1b1f] text-lg capitalize">items</CardTitle>
-        <Button
-          size="sm"
-          className="bg-[#0a9b21] hover:bg-[#0a9b21]/90"
-          onClick={() => { setEditingItem(undefined); setItemModalOpen(true); }}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Item
-        </Button>
+        {isAdmin && (
+          <Button
+            size="sm"
+            className="bg-[#0a9b21] hover:bg-[#0a9b21]/90"
+            onClick={() => { setEditingItem(undefined); setItemModalOpen(true); }}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Item
+          </Button>
+        )}
       </div>
     </CardHeader>
     <CardContent>
@@ -73,26 +77,32 @@ const ItemsSection: React.FC<ItemsSectionProps> = ({
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openDetailModal(item)}>
                       <Eye className="w-3 h-3" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEdit(item)}>
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-[#0a9b21] hover:text-[#0a9b21]"
-                      onClick={() => onAllocate(item)}
-                      title="Allocate Item"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-[#be0606] hover:text-[#be0606]"
-                      onClick={() => openDeleteModal(item)}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                    {!isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-[#0a9b21] hover:text-[#0a9b21]"
+                        onClick={() => onAllocate(item)}
+                        title="Allocate Item to Me"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                    )}
+                    {isAdmin && (
+                      <>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEdit(item)}>
+                          <Edit className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-[#be0606] hover:text-[#be0606]"
+                          onClick={() => openDeleteModal(item)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

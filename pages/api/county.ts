@@ -80,11 +80,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     return;
   } else if (req.method === 'POST') {
-    // Require auth for POST
-    const token = getTokenFromHeader(req);
-    if (!token) return res.status(401).json({ error: 'No token provided' });
-    const payload = verifyToken(token);
-    if (!payload) return res.status(401).json({ error: 'Invalid token' });
+
     // Create county
     const { county_name, county_number } = req.body;
     if (!county_name || typeof county_number !== 'number') {

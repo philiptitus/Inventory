@@ -11,15 +11,18 @@ datasource db {
 }
 
 model Item {
-  id          Int      @id @default(autoincrement())
-  pname       String  // Item name
-  serialno    String  // Serial number
-  model       String  // Model name/id (could be relation in future)
-  category    String  // Category name/id (could be relation in future)
-  county      String  // County name/id (could be relation in future)
-  userId      Int
-  user        User     @relation(fields: [userId], references: [id])
-  allocations Allocation[]
+  id            Int             @id @default(autoincrement())
+  pname         String          // Item name
+  serialno      String          // Serial number
+  model         String          // Model name/id (could be relation in future)
+  category      String          // Category name/id (could be relation in future)
+  county        String          // County name/id (could be relation in future)
+  userId        Int
+  user          User            @relation(fields: [userId], references: [id])
+  allocations   Allocation[]
+  isUnderRepair Boolean         @default(false)
+  lastRepairDate DateTime?
+  repairHistory RepairRequest[]
 }
 
 model Category {
@@ -42,15 +45,35 @@ model Department {
 }
 
 model Allocation {
-  id             Int      @id @default(autoincrement())
+  id             Int            @id @default(autoincrement())
   userId         Int
-  user           User     @relation(fields: [userId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
   itemId         Int
-  item           Item     @relation(fields: [itemId], references: [id])
+  item           Item           @relation(fields: [itemId], references: [id])
   Date_Allocated String
   Date_Returned  String?
-  status         String   // "active" or "returned"
+  status         String         // "active" or "returned"
   Message        String?
+  returnRequests ReturnRequest[]
+  repairRequests RepairRequest[]
+}
+
+model RepairRequest {
+  id            Int       @id @default(autoincrement())
+  allocation    Allocation @relation(fields: [allocationId], references: [id])
+  allocationId  Int
+  requestedBy   User      @relation("RepairRequestedBy", fields: [requestedById], references: [id])
+  requestedById Int
+  status        String    @default("pending") // 'pending', 'in_progress', 'completed', 'rejected'
+  issue         String    // Description of the issue
+  adminNotes    String?   // Notes from admin/technician
+  requestedAt   DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  completedAt   DateTime? // When repair is marked as completed
+  completedBy   User?     @relation("RepairCompletedBy", fields: [completedById], references: [id])
+  completedById Int?
+  item          Item      @relation(fields: [itemId], references: [id])
+  itemId        Int
 }
 
 model Model {
@@ -58,16 +81,35 @@ model Model {
   model_name String
 }
 
+model ReturnRequest {
+  id            Int       @id @default(autoincrement())
+  allocation    Allocation @relation(fields: [allocationId], references: [id])
+  allocationId  Int
+  requestedBy   User      @relation("RequestedBy", fields: [requestedById], references: [id])
+  requestedById Int
+  status        String    @default("pending") // 'pending', 'approved', 'rejected'
+  message       String?   // Optional message from requester
+  adminNotes    String?   // Optional notes from admin
+  requestedAt   DateTime  @default(now())
+  processedAt   DateTime? // When admin approves/rejects
+  processedBy   User?     @relation("ProcessedBy", fields: [processedById], references: [id])
+  processedById Int?
+}
+
 model User {
-  id           Int         @id @default(autoincrement())
-  name         String
-  email        String      @unique
-  password     String
-  phone        String
-  isAdmin      Boolean     @default(false)
-  departmentId Int?
-  department   Department? @relation(fields: [departmentId], references: [id])
-  county       String
-  items        Item[]
-  allocations  Allocation[]
+  id              Int             @id @default(autoincrement())
+  name            String
+  email           String          @unique
+  password        String
+  phone           String
+  isAdmin         Boolean         @default(false)
+  departmentId    Int?
+  department      Department?     @relation(fields: [departmentId], references: [id])
+  county          String
+  items           Item[]
+  allocations     Allocation[]
+  requestedReturns ReturnRequest[] @relation("RequestedBy")
+  processedReturns ReturnRequest[] @relation("ProcessedBy")
+  repairRequests  RepairRequest[] @relation("RepairRequestedBy")
+  completedRepairs RepairRequest[] @relation("RepairCompletedBy")
 }

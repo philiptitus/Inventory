@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent } from "@/components/ui/card"
 import { User, Lock, Phone, MapPin } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useRouter } from "next/navigation"
+import { debounce } from "lodash"
 
 interface LoginProps {
   onLogin: (initialPage?: string) => void
@@ -32,6 +33,45 @@ export default function Login({ onLogin }: LoginProps) {
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
   const [county, setCounty] = useState("")
+  const [countySearch, setCountySearch] = useState("")
+  const [countyResults, setCountyResults] = useState<string[]>([])
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [countyError, setCountyError] = useState("")
+  const [phoneError, setPhoneError] = useState("")
+  const [isAdmin, setIsAdmin] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Fetch counties for search
+  const searchCounties = debounce(async (query: string) => {
+    if (!query.trim()) {
+      setCountyResults([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/county?search=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (res.ok) {
+        const countyNames = data.counties.map((c: any) => c.county_name);
+        setCountyResults(countyNames);
+      } else {
+        setCountyResults([]);
+      }
+    } catch (error) {
+      console.error('Error searching counties:', error);
+      setCountyResults([]);
+    }
+  }, 300);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const checkToken = async () => {
@@ -72,8 +112,49 @@ export default function Login({ onLogin }: LoginProps) {
     }
   }
 
+  const validatePhoneNumber = (phone: string): boolean => {
+    // Accepts formats: 07XXXXXXXX, +2547XXXXXXXX, or 2547XXXXXXXX (10-13 digits total)
+    const phoneRegex = /^(\+?254|0)?[17]\d{8}$/
+    return phoneRegex.test(phone)
+  }
+
+  const validateCounty = (): boolean => {
+    if (!county.trim()) {
+      setCountyError("Please select a county from the dropdown")
+      return false
+    }
+    setCountyError("")
+    return true
+  }
+
+  const validateForm = (): boolean => {
+    let isValid = true
+    
+    if (!validateCounty()) {
+      isValid = false
+    }
+    
+    if (!phone.trim()) {
+      setPhoneError("Phone number is required")
+      isValid = false
+    } else if (!validatePhoneNumber(phone)) {
+      setPhoneError("Please enter a valid phone number (e.g., 0712345678 or +254712345678)")
+      isValid = false
+    } else {
+      setPhoneError("")
+    }
+    
+    return isValid
+  }
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validate form before submission
+    if (!validateForm()) {
+      return
+    }
+    
     setLoading(true)
     try {
       const res = await fetch("/api/user", {
@@ -85,7 +166,8 @@ export default function Login({ onLogin }: LoginProps) {
           email,
           password,
           phone,
-          county
+          county,
+          isAdmin: isAdmin
         })
       })
       const data = await res.json()
@@ -116,8 +198,18 @@ export default function Login({ onLogin }: LoginProps) {
       <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-4">
-            <span className="text-[#4a4a4a] font-bold text-2xl">Y</span>
+          <div className="flex justify-center mb-4">
+            <img 
+              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQYX-2s8xRlUvUApWiNgetnZrqEeCKHj_wf8g&s" 
+              alt="YouthFund Logo" 
+              className="h-24 w-auto"
+              onError={(e) => {
+                // Fallback in case the image fails to load
+                const target = e.target as HTMLImageElement;
+                target.onerror = null;
+                target.src = '/logo-placeholder.png';
+              }}
+            />
           </div>
           <h1 className="text-white text-2xl font-bold tracking-wider">YouthFund</h1>
         </div>
@@ -177,32 +269,104 @@ export default function Login({ onLogin }: LoginProps) {
                   />
                 </div>
                 {/* Phone Field */}
-                <div className="relative">
+                <div className="relative mb-1">
                   <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
                     <Phone className="w-5 h-5 text-[#8b8989]" />
                   </div>
                   <Input
-                    type="text"
-                    placeholder="Phone"
+                    type="tel"
+                    placeholder="Phone (e.g., 0712345678 or +254712345678)"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="pl-12 h-12 border-[#d9d9d9] focus:border-[#4a4a4a] focus:ring-[#4a4a4a] bg-[#fffcfc]"
+                    onChange={(e) => {
+                      const value = e.target.value
+                      // Allow only numbers and + at the start
+                      if (/^\+?\d*$/.test(value) && value.length <= 13) {
+                        setPhone(value)
+                        // Clear error when user starts typing
+                        if (phoneError) setPhoneError("")
+                      }
+                    }}
+                    className={`pl-12 h-12 border-[#d9d9d9] focus:border-[#4a4a4a] focus:ring-[#4a4a4a] bg-[#fffcfc] ${phoneError ? 'border-red-500' : ''}`}
                     required
                   />
+                  {phoneError && (
+                    <p className="text-red-500 text-xs mt-1 ml-1">{phoneError}</p>
+                  )}
                 </div>
-                {/* County Field */}
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                {/* County Field with Searchable Dropdown */}
+                <div className="relative mb-1" ref={dropdownRef}>
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 z-10">
                     <MapPin className="w-5 h-5 text-[#8b8989]" />
                   </div>
                   <Input
                     type="text"
-                    placeholder="County"
-                    value={county}
-                    onChange={(e) => setCounty(e.target.value)}
-                    className="pl-12 h-12 border-[#d9d9d9] focus:border-[#4a4a4a] focus:ring-[#4a4a4a] bg-[#fffcfc]"
+                    placeholder="Search and select your county"
+                    value={countySearch}
+                    onChange={(e) => {
+                      setCountySearch(e.target.value);
+                      searchCounties(e.target.value);
+                      setShowDropdown(true);
+                    }}
+                    onFocus={() => setShowDropdown(true)}
+                    className="pl-12 h-12 border-[#d9d9d9] focus:border-[#4a4a4a] focus:ring-[#4a4a4a] bg-[#fffcfc] pr-10"
                     required
                   />
+                  {countyError && (
+                    <p className="text-red-500 text-xs mt-1 ml-1">{countyError}</p>
+                  )}
+                  {county && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCounty("");
+                        setCountySearch("");
+                        setCountyResults([]);
+                      }}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      ×
+                    </button>
+                  )}
+                  {showDropdown && countyResults.length > 0 && (
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+                      {countyResults.map((countyName, index) => (
+                        <div
+                          key={index}
+                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                          onClick={() => {
+                            setCounty(countyName);
+                            setCountySearch(countyName);
+                            setShowDropdown(false);
+                            setCountyError(""); // Clear error when county is selected
+                          }}
+                        >
+                          {countyName}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Admin Registration - For testing only */}
+                <div className="mt-4 p-4 border border-amber-200 bg-amber-50 rounded-md">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Checkbox 
+                      id="adminCheckbox"
+                      checked={isAdmin}
+                      onCheckedChange={(checked) => setIsAdmin(checked === true)}
+                      className="border-[#4a4a4a] data-[state=checked]:bg-[#4a4a4a]"
+                    />
+                    <label 
+                      htmlFor="adminCheckbox" 
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Register as Admin
+                    </label>
+                  </div>
+                  <p className="text-xs text-amber-700">
+                    Note: This option is only available during testing. In the live system, admin access is granted by system administrators.
+                  </p>
                 </div>
                 {/* Register Button */}
                 <Button

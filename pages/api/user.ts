@@ -217,9 +217,22 @@ export default async function handler(
         return;
       }
       try {
+        // Check if user already exists
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
           res.status(409).json({ error: 'User already exists' });
+          return;
+        }
+
+        // Validate that the county exists
+        const countyExists = await prisma.county.findFirst({
+          where: { county_name: county }
+        });
+        
+        if (!countyExists) {
+          res.status(400).json({ 
+            error: 'Invalid county provided. Please select a valid county from the list.' 
+          });
           return;
         }
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -258,9 +271,22 @@ export default async function handler(
       }
 
       try {
+        // Check if user already exists
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
           res.status(409).json({ error: 'User already exists' });
+          return;
+        }
+
+        // Validate that the county exists
+        const countyExists = await prisma.county.findFirst({
+          where: { county_name: county }
+        });
+        
+        if (!countyExists) {
+          res.status(400).json({ 
+            error: 'Invalid county provided. Please select a valid county from the list.' 
+          });
           return;
         }
 

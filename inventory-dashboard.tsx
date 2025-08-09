@@ -50,6 +50,8 @@ import MembersSection from "./components/inventory/MembersSection";
 import ItemsSection from "./components/inventory/ItemsSection";
 import CategoriesSection from "./components/inventory/CategoriesSection";
 import DashboardSection from "./components/inventory/DashboardSection";
+import ReturnRequestsSection from "./components/inventory/ReturnRequestsSection";
+import RepairRequestsSection from "./components/inventory/RepairRequestsSection";
 import { fetchCounties as apiFetchCounties, createCounty as apiCreateCounty, updateCounty as apiUpdateCounty, apiDeleteCounty } from "@/lib/countyApi";
 import { apiFetchDepartments, apiCreateDepartment, apiUpdateDepartment, apiDeleteDepartment } from "@/lib/departmentApi";
 import { apiFetchItems, apiCreateItem, apiUpdateItem, apiDeleteItem, apiFetchItemById } from "@/lib/itemApi";
@@ -62,11 +64,13 @@ import { toast } from "@/hooks/use-toast";
 import AllocationDetailModal from "@/components/modals/AllocationDetailModal";
 import { Toaster } from '@/components/ui/toaster';
 
-type ActivePage =
+export type ActivePage =
   | "dashboard"
   | "items"
   | "members"
   | "allocations"
+  | "return-requests"
+  | "repair-requests"
   | "categories"
   | "models"
   | "counties"
@@ -141,6 +145,7 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
 
   const [user, setUser] = useState<{ name: string; isAdmin: boolean } | null>(null)
   const { toast } = useToast()
+  const [initialLoad, setInitialLoad] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryPage, setCategoryPage] = useState(1)
@@ -212,6 +217,7 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
 
   // Add state for allocations
   const [allocations, setAllocations] = useState<Allocation[]>([]);
+  const [allocationsLoading, setAllocationsLoading] = useState(false);
   const [allocationListLoading, setAllocationListLoading] = useState(false);
   const [allocationError, setAllocationError] = useState<string | null>(null);
 
@@ -223,11 +229,56 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
       const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
       const data = await apiFetchAllocations(token || "");
       setAllocations(data.allocations || []);
+      return data.allocations || [];
     } catch (err: any) {
       setAllocationError(err.message || "Failed to fetch allocations");
       toast({ title: "Network error", description: err.message || "Could not fetch allocations.", variant: "destructive" });
+      return [];
+    } finally {
+      setAllocationListLoading(false);
     }
-    setAllocationListLoading(false);
+  };
+
+  // Handle updating an allocation
+  const handleUpdateAllocation = async (allocationId: number, allocationData: Omit<Allocation, "id">) => {
+    setAllocationLoading(true);
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      if (!token) throw new Error("No authentication token found");
+      
+      await apiUpdateAllocation(allocationId, {
+        message: allocationData.Message,
+        status: allocationData.status
+      }, token);
+      
+      // Refresh the allocations list
+      await fetchAndSetAllocations();
+      toast({ title: "Success", description: "Allocation updated successfully", variant: "default" });
+      return true;
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to update allocation", variant: "destructive" });
+      return false;
+    } finally {
+      setAllocationLoading(false);
+    }
+  };
+
+  // Handle deleting an allocation
+  const deleteAllocation = async (id: number) => {
+    try {
+      const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
+      if (!token) throw new Error("No authentication token found");
+      
+      await apiDeleteAllocation(id, token);
+      
+      // Refresh the allocations list
+      await fetchAndSetAllocations();
+      toast({ title: "Success", description: "Allocation deleted successfully", variant: "default" });
+      return true;
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to delete allocation", variant: "destructive" });
+      return false;
+    }
   };
 
   useEffect(() => {
@@ -254,6 +305,16 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
     };
     fetchUser();
   }, []);
+
+  // Handle initial page redirection for normal users
+  useEffect(() => {
+    if (initialLoad && user) {
+      if (!user.isAdmin && activePage === 'dashboard') {
+        setActivePage('allocations');
+      }
+      setInitialLoad(false);
+    }
+  }, [user, activePage, initialLoad]);
 
   // Add a function to fetch categories and update state
   const fetchAndSetCategories = async (page = categoryPage) => {
@@ -404,41 +465,67 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
   )
 
   // Handle delete operations
-  const handleDelete = () => {
-    if (!deleteTarget) return
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
 
-    switch (deleteTarget.type) {
-      case "item":
-        deleteItem(deleteTarget.id)
-        break
-      case "member":
-        deleteMember(deleteTarget.id)
-        break
-      case "allocation":
-        deleteAllocation(deleteTarget.id)
-        break
-      case "category":
-        deleteCategory(deleteTarget.id)
-        break
-      case "county":
-        deleteCounty(deleteTarget.id)
-        break
-      case "model":
-        deleteModel(deleteTarget.id)
-        break
-      case "department":
-        deleteDepartment(deleteTarget.id)
-        break
+    try {
+      switch (deleteTarget.type) {
+        case "item":
+          await deleteItem(deleteTarget.id);
+          break;
+        case "member":
+          await deleteMember(deleteTarget.id);
+          break;
+        case "allocation":
+          await deleteAllocation(deleteTarget.id);
+          // No need to refresh here since deleteAllocation already does it
+          break;
+        case "category":
+          await deleteCategory(deleteTarget.id);
+          break;
+        case "county":
+          await deleteCounty(deleteTarget.id);
+          break;
+        case "model":
+          await deleteModel(deleteTarget.id);
+          break;
+        case "department":
+          await deleteDepartment(deleteTarget.id);
+          break;
+      }
+
+      toast({
+        title: "Success",
+        description: `${deleteTarget.type.charAt(0).toUpperCase() + deleteTarget.type.slice(1)} deleted successfully`,
+        variant: "default"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || `Failed to delete ${deleteTarget.type}`,
+        variant: "destructive"
+      });
+    } finally {
+      setDeleteModalOpen(false);
+      setDeleteTarget(null);
     }
-
-    setDeleteModalOpen(false)
-    setDeleteTarget(null)
   }
 
   const openDeleteModal = (type: string, id: number, name: string) => {
     setDeleteTarget({ type, id, name })
     setDeleteModalOpen(true)
   }
+
+  // Handle search operations
+  const handleSearch = (type: string, term: string) => {
+    setSearchTerm(term);
+    // Add search logic here
+  };
+
+  // Handle search results for allocations
+  const handleSearchResults = (results: any[]) => {
+    setAllocations(results);
+  };
 
   // Handle edit operations
   const handleEdit = (type: string, item: any) => {
@@ -452,8 +539,22 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
         setMemberModalOpen(true)
         break
       case "allocation":
-        setEditingAllocation(item)
-        setAllocationModalOpen(true)
+        // Find the full allocation data including user and item details
+        const fullAllocation = allocations.find((a: any) => a.id === item.id);
+        if (fullAllocation) {
+          setEditingAllocation(fullAllocation);
+          // If the allocation has an item, set it for the modal
+          if ('item' in fullAllocation) {
+            setAllocationItem((fullAllocation as any).item);
+          }
+          setAllocationModalOpen(true);
+        } else {
+          toast({
+            title: "Error",
+            description: "Could not find allocation details",
+            variant: "destructive"
+          });
+        }
         break
       case "category":
         setEditingCategory(item)
@@ -879,41 +980,83 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
     setAllocationItem(item);
     setAllocationModalOpen(true);
     setAllocationLoading(true);
+    
     try {
       const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
       if (!token) throw new Error("No token found");
-      const users = await apiFetchAllUsers(token);
-      setAllocationUsers(users.map((u: any) => ({
-        id: u.id,
-        payroll_no: u.payroll_no || "-",
-        member_name: u.name,
-        department: u.department || "-",
-        office_location: u.county || "-",
-        county: u.county || "-",
-      })));
+      
+      // If user is not admin, use current user's info directly
+      if (!user?.isAdmin && user) {
+        setAllocationUsers([{
+          id: user.id,
+          payroll_no: "",
+          member_name: user.name,
+          department: "",
+          office_location: "",
+          county: ""
+        }]);
+      } else {
+        // For admins, fetch all users
+        const users = await apiFetchAllUsers(token);
+        setAllocationUsers(users.map((u: any) => ({
+          id: u.id,
+          payroll_no: u.payroll_no || "-",
+          member_name: u.name,
+          department: u.department || "-",
+          office_location: u.county || "-",
+          county: u.county || "-",
+        })));
+      }
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to fetch users", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: err.message || "Failed to fetch user information", 
+        variant: "destructive" 
+      });
       setAllocationUsers([]);
+    } finally {
+      setAllocationLoading(false);
     }
-    setAllocationLoading(false);
   };
 
-  // Handle allocation creation
+  // Handle allocation creation - single source of truth
   const handleCreateAllocation = async (formData: any) => {
     setAllocationLoading(true);
     try {
       const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
-      if (!token) throw new Error("No token found");
-      // Use userId and itemId from formData directly
-      await apiCreateAllocation({ userId: formData.userId, itemId: formData.itemId, message: formData.Message }, token);
-      toast({ title: "Success", description: "Allocation created successfully!", variant: "default" });
+      if (!token) throw new Error("No authentication token found");
+      
+      await apiCreateAllocation({
+        userId: formData.userId,
+        itemId: formData.itemId,
+        message: formData.Message || ""
+      }, token);
+      
+      // Refresh the allocations list
+      await fetchAndSetAllocations();
+      
+      // Close modal and reset state
       setAllocationModalOpen(false);
       setAllocationItem(null);
       setActivePage("allocations");
+      
+      toast({ 
+        title: "Success", 
+        description: "Allocation created successfully!", 
+        variant: "default" 
+      });
+      
+      return true;
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to create allocation", variant: "destructive" });
+      toast({ 
+        title: "Error", 
+        description: err.message || "Failed to create allocation", 
+        variant: "destructive" 
+      });
+      return false;
+    } finally {
+      setAllocationLoading(false);
     }
-    setAllocationLoading(false);
   };
 
   // Add state for allocation detail modal
@@ -981,6 +1124,7 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
               openDeleteModal={handleDeleteItem}
               openDetailModal={openDetailModal}
               onAllocate={handleOpenAllocate}
+              isAdmin={user?.isAdmin || false}
             />
           </div>
         )
@@ -1030,10 +1174,20 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
             setAllocationModalOpen={setAllocationModalOpen}
             handleEdit={handleEdit}
             openDeleteModal={openDeleteModal}
-            openDetailModal={(allocation) => handleOpenAllocationDetail(allocation.id)}
-            loading={allocationListLoading}
+            openDetailModal={(allocation) => {
+              // Pass only the allocation ID to the handler
+              handleOpenAllocationDetail(allocation.id);
+            }}
+            loading={allocationsLoading}
+            onSearchResults={handleSearchResults}
+            isAdmin={user?.isAdmin || false}
           />
-        )
+        );
+      
+      case "return-requests":
+        return <ReturnRequestsSection isAdmin={user?.isAdmin || false} />;
+      case "repair-requests":
+        return <RepairRequestsSection isAdmin={user?.isAdmin || false} />;
       case "categories":
         return (
           <CategoriesSection
@@ -1100,13 +1254,13 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
     <div className="flex h-screen bg-[#fffcfc] overflow-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden lg:flex w-64 bg-[#292929] text-white flex-col">
-        <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} />
+        <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} isAdmin={user?.isAdmin || false} />
       </div>
 
       {/* Mobile Sidebar */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-64 bg-[#292929] text-white p-0 border-r-0">
-          <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} />
+          <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={onLogout} isAdmin={user?.isAdmin || false} />
         </SheetContent>
       </Sheet>
 
@@ -1177,13 +1331,27 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
 
           {/* Desktop Right Sidebar */}
           <div className="hidden xl:flex w-80 bg-[#292929] text-white">
-            <RightSidebar searchTerm={searchTerm} setSearchTerm={setSearchTerm} allocations={allocations} handleAdd={handleAdd} />
+            <RightSidebar 
+              searchTerm={searchTerm} 
+              setSearchTerm={setSearchTerm} 
+              allocations={allocations} 
+              handleAdd={handleAdd}
+              setActivePage={setActivePage}
+              isAdmin={user?.isAdmin || false}
+            />
           </div>
 
           {/* Mobile Right Sidebar */}
           <Sheet open={rightSidebarOpen} onOpenChange={setRightSidebarOpen}>
             <SheetContent side="right" className="w-80 bg-[#292929] text-white p-0 border-l-0">
-              <RightSidebar searchTerm={searchTerm} setSearchTerm={setSearchTerm} allocations={allocations} handleAdd={handleAdd} />
+              <RightSidebar 
+                searchTerm={searchTerm} 
+                setSearchTerm={setSearchTerm} 
+                allocations={allocations} 
+                handleAdd={handleAdd}
+                setActivePage={setActivePage}
+                isAdmin={user?.isAdmin || false}
+              />
             </SheetContent>
           </Sheet>
         </div>
@@ -1215,8 +1383,8 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
         isOpen={allocationModalOpen}
         onClose={() => { setAllocationModalOpen(false); setAllocationItem(null); }}
         onSave={handleCreateAllocation}
-        onUpdate={() => {}}
-        allocation={undefined}
+        onUpdate={handleUpdateAllocation}
+        allocation={editingAllocation}
         members={allocationUsers}
         items={allocationItem ? [allocationItem] : []}
         loading={allocationLoading}

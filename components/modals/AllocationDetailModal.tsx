@@ -6,7 +6,7 @@ import { apiFetchAllocationById, apiDeleteAllocation } from "@/lib/allocationApi
 
 interface AllocationDetailModalProps {
   isOpen: boolean;
-  allocationId: number | null;
+  allocationId: number | string | null;
   onClose: () => void;
   onDeleted?: () => void;
 }
@@ -19,40 +19,57 @@ export default function AllocationDetailModal({ isOpen, allocationId, onClose, o
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
-    if (!isOpen || !allocationId) return;
+    if (!isOpen || !allocationId) {
+      setAllocation(null);
+      return;
+    }
+    
     setLoading(true);
     setError(null);
-    setAllocation(null);
+    
     (async () => {
       try {
+        // Convert string ID to number if needed
+        const id = typeof allocationId === 'string' ? parseInt(allocationId, 10) : allocationId;
+        
+        if (isNaN(id)) {
+          throw new Error('Invalid allocation ID');
+        }
+        
+        // Always fetch allocation details from the API
         const token = typeof window !== 'undefined' ? (localStorage.getItem("token") || undefined) : undefined;
-        const data = await apiFetchAllocationById(allocationId, token || "");
-        let allocationObj = data;
-        if (data.allocations && Array.isArray(data.allocations)) {
-          allocationObj = data.allocations[0];
+        const response = await apiFetchAllocationById(id, token || "");
+        
+        // Handle both direct object and nested allocations array response
+        const allocationObj = response.allocations?.[0] || response;
+        
+        if (!allocationObj) {
+          throw new Error('No allocation data received');
         }
-        if (allocationObj) {
-          setAllocation({
-            Member_Name: allocationObj.user?.name || "-",
-            Member_Email: allocationObj.user?.email || "-",
-            Member_Phone: allocationObj.user?.phone || "-",
-            ID_PF_No: allocationObj.user?.payroll_no || allocationObj.ID_PF_No || "-",
-            Department: allocationObj.user?.department || allocationObj.Department || "-",
-            Office_Location: allocationObj.user?.office_location || allocationObj.Office_Location || "-",
-            County: allocationObj.user?.county || allocationObj.County || allocationObj.item?.county || "-",
-            Item_Name: allocationObj.item?.pname || allocationObj.Item_Name || "-",
-            Item_Serial_No: allocationObj.item?.serialno || allocationObj.Item_Serial_No || "-",
-            Category: allocationObj.item?.category || allocationObj.Category || "-",
-            Model: allocationObj.item?.model || allocationObj.Model || "-",
-            Item_County: allocationObj.item?.county || "-",
-            Date_Allocated: allocationObj.Date_Allocated || "-",
-            Date_Returned: allocationObj.Date_Returned || "-",
-            status: allocationObj.status || "-",
-            Message: allocationObj.Message || "-",
-          });
-        } else {
-          setError("Allocation not found.");
+        if (!allocationObj) {
+          throw new Error('No allocation data received');
         }
+        
+        // Safely extract data with fallbacks
+        setAllocation({
+          id: allocationObj.id || id, // Use the ID we sent if not in response
+          Member_Name: allocationObj.user?.name || allocationObj.Member_Name || "-",
+          Member_Email: allocationObj.user?.email || allocationObj.Member_Email || "-",
+          Member_Phone: allocationObj.user?.phone || allocationObj.Member_Phone || "-",
+          ID_PF_No: allocationObj.user?.payroll_no || allocationObj.ID_PF_No || "-",
+          Department: allocationObj.user?.department || allocationObj.Department || "-",
+          Office_Location: allocationObj.user?.office_location || allocationObj.Office_Location || "-",
+          County: allocationObj.user?.county || allocationObj.County || allocationObj.item?.county || "-",
+          Item_Name: allocationObj.item?.pname || allocationObj.Item_Name || "-",
+          Item_Serial_No: allocationObj.item?.serialno || allocationObj.Item_Serial_No || "-",
+          Category: allocationObj.item?.category || allocationObj.Category || "-",
+          Model: allocationObj.item?.model || allocationObj.Model || "-",
+          Item_County: allocationObj.item?.county || allocationObj.Item_County || "-",
+          Date_Allocated: allocationObj.Date_Allocated || "-",
+          Date_Returned: allocationObj.Date_Returned || "-",
+          status: allocationObj.status || "-",
+          Message: allocationObj.Message || "-",
+        });
       } catch (err: any) {
         setError(err.message || "Failed to fetch allocation details");
       }

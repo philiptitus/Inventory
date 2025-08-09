@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -9,9 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { Home, Package, ShoppingCart, CreditCard, BarChart3, Truck, Users, Settings, LogOut, Menu, Mail, Phone, MapPin, AlertTriangle } from "lucide-react";
+import { Home, Package, ShoppingCart, CreditCard, BarChart3, Truck, Users, Settings, LogOut, Menu, Mail, Phone, MapPin, AlertTriangle, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
+import debounce from 'lodash/debounce';
+
+type ActivePage = "dashboard" | "items" | "members" | "allocations" | "categories" | "models" | "counties" | "departments";
+
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -38,11 +42,18 @@ export default function ProfilePage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const router = useRouter();
 
-  // Sidebar state for active page
-  const [activePage, setActivePage] = useState("dashboard");
+  // Navigation handler for sidebar items - navigate to root
+  const handleNavigation = (page: ActivePage) => {
+    router.push('/');
+  };
 
   // Form state
   const [form, setForm] = useState({ name: "", phone: "", county: "" });
+  const [countySearch, setCountySearch] = useState("");
+  const [countyResults, setCountyResults] = useState<string[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [countyError, setCountyError] = useState("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -81,8 +92,78 @@ export default function ProfilePage() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // Debounced county search
+  const searchCounties = useCallback(debounce(async (query: string) => {
+    if (!query.trim()) {
+      setCountyResults([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/county?search=${encodeURIComponent(query)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCountyResults(data.counties.map((c: any) => c.name));
+      }
+    } catch (error) {
+      console.error('Error searching counties:', error);
+      setCountyResults([]);
+    }
+  }, 300), []);
+
+  // Handle county search input change
+  const handleCountySearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setCountySearch(value);
+    searchCounties(value);
+    setShowDropdown(!!value.trim());
+  };
+
+  // Handle county selection from dropdown
+  const handleCountySelect = (countyName: string) => {
+    setForm({ ...form, county: countyName });
+    setCountySearch(countyName);
+    setShowDropdown(false);
+    setCountyError("");
+  };
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Initialize county search when entering edit mode
+  useEffect(() => {
+    if (editMode && form.county) {
+      setCountySearch(form.county);
+    }
+  }, [editMode, form.county]);
+
+  const validateForm = () => {
+    if (!form.county.trim()) {
+      setCountyError("Please select a county from the dropdown");
+      return false;
+    }
+    setCountyError("");
+    return true;
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate form before submission
+    if (!validateForm()) {
+      return;
+    }
+    
     setEditLoading(true);
     setEditError(null);
     setEditSuccess(false);
@@ -160,12 +241,12 @@ export default function ProfilePage() {
     <div className="flex h-screen bg-gradient-to-br from-red-100 via-white to-red-200 overflow-hidden">
       {/* Desktop Sidebar */}
       <div className="hidden lg:flex w-64 bg-[#292929] text-white flex-col">
-        <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={handleLogout} />
+        <Sidebar activePage="dashboard" setActivePage={handleNavigation} onLogout={handleLogout} />
       </div>
       {/* Mobile Sidebar */}
       <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <SheetContent side="left" className="w-64 bg-[#292929] text-white p-0 border-r-0">
-          <Sidebar activePage={activePage} setActivePage={setActivePage} onLogout={handleLogout} />
+          <Sidebar activePage="dashboard" setActivePage={handleNavigation} onLogout={handleLogout} />
         </SheetContent>
       </Sheet>
       {/* Main Content */}
@@ -223,15 +304,51 @@ export default function ProfilePage() {
                         className="w-full rounded-lg border px-4 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-red-200 bg-white/80 shadow-sm"
                     required
                   />
-                  <input
-                    type="text"
-                    name="county"
-                    value={form.county}
-                    onChange={handleChange}
-                    placeholder="County"
-                        className="w-full rounded-lg border px-4 py-2 text-lg focus:outline-none focus:ring-2 focus:ring-red-200 bg-white/80 shadow-sm"
-                    required
-                  />
+                  <div className="relative w-full" ref={dropdownRef}>
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 z-10">
+                      <MapPin className="w-5 h-5 text-[#8b8989]" />
+                    </div>
+                    <input
+                      type="text"
+                      name="county"
+                      value={countySearch}
+                      onChange={handleCountySearchChange}
+                      onFocus={() => setShowDropdown(true)}
+                      placeholder="Search and select your county"
+                      className={`w-full pl-12 h-12 border-[#d9d9d9] focus:border-[#4a4a4a] focus:ring-[#4a4a4a] bg-white/80 shadow-sm rounded-lg pr-10 ${countyError ? 'border-red-500' : ''}`}
+                      required
+                    />
+                    {countySearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCountySearch("");
+                          setForm({ ...form, county: "" });
+                          setCountyResults([]);
+                          setShowDropdown(false);
+                        }}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        ×
+                      </button>
+                    )}
+                    {countyError && (
+                      <p className="text-red-500 text-xs mt-1 ml-1">{countyError}</p>
+                    )}
+                    {showDropdown && countyResults.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-300 rounded-md shadow-xl max-h-60 overflow-auto">
+                        {countyResults.map((countyName) => (
+                          <div
+                            key={countyName}
+                            className="px-4 py-3 hover:bg-gray-100 cursor-pointer text-gray-900 text-base font-semibold"
+                            onClick={() => handleCountySelect(countyName)}
+                          >
+                            {countyName}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex gap-2 w-full justify-center mt-2">
                     <button
                       type="button"
