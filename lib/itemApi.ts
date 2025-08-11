@@ -42,7 +42,14 @@ export async function apiUpdateItem(id: number, data: Partial<Omit<Item, "id">>,
     },
     body: JSON.stringify({ id, ...data }),
   });
-  if (!res.ok) throw new Error("Failed to update item");
+  
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = errorData.error || 'Failed to update item';
+    const errorDetails = errorData.details ? `: ${errorData.details}` : '';
+    throw new Error(`${errorMessage}${errorDetails}`);
+  }
+  
   return res.json();
 }
 
@@ -55,6 +62,13 @@ export async function apiDeleteItem(id: number, token: string) {
     },
     body: JSON.stringify({ id }),
   });
-  if (!res.ok) throw new Error("Failed to delete item");
+  
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const errorMessage = errorData.error || 'Failed to delete item';
+    const errorDetails = errorData.details ? `: ${errorData.details}` : '';
+    throw new Error(`${errorMessage}${errorDetails}`);
+  }
+  
   return res.json();
-} 
+}

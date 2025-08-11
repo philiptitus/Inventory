@@ -131,12 +131,75 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
   // Add a useState for departments
   const [departments, setDepartments] = useState<Department[]>([]);
 
-  // Add state for items
+  // State for items and pagination
   const [items, setItems] = useState<Item[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const itemsPerPage = 10;
   const [itemListLoading, setItemListLoading] = useState(false);
   const [itemLoading, setItemLoading] = useState(false);
   const [itemError, setItemError] = useState<string | null>(null);
+  
+  // Fetch items with pagination and search
+  const fetchItems = async (page: number = currentPage, search: string = searchTerm) => {
+    setItemListLoading(true);
+    setItemError(null);
+    
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) throw new Error('No authentication token found');
+      
+      const response = await fetch(`/api/inventory?page=${page}&limit=${itemsPerPage}${search ? `&search=${encodeURIComponent(search)}` : ''}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch items');
+      }
+      
+      const data = await response.json();
+      setItems(data.items || []);
+      setTotalPages(data.pagination?.totalPages || 1);
+      setTotalItems(data.pagination?.total || 0);
+      setCurrentPage(page);
+      
+      return data;
+    } catch (error) {
+      console.error('Error fetching items:', error);
+      setItemError(error instanceof Error ? error.message : 'Failed to fetch items');
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch items',
+        variant: 'destructive',
+      });
+      throw error;
+    } finally {
+      setItemListLoading(false);
+    }
+  };
 
+  // Load items on component mount and when search term changes
+  useEffect(() => {
+    const loadItems = async () => {
+      try {
+        await fetchItems(1, searchTerm);
+      } catch (error) {
+        // Error is already handled in fetchItems
+      }
+    };
+    
+    // Set a timeout to debounce the search
+    const timeoutId = setTimeout(() => {
+      loadItems();
+    }, 300);
+    
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
+  
   // Add state for item detail modal
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Item | null>(null);
@@ -439,7 +502,8 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
         const users = await apiFetchAllUsers(token, search ?? memberSearchTerm);
         setMembers(users.map((u: any) => ({
           id: u.id,
-          payroll_no: u.payroll_no || "-",
+          email: u.email || "-",
+          phone: u.phone || "-",
           member_name: u.name,
           department: u.department || "-",
           office_location: u.county || "-",
@@ -989,7 +1053,7 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
       if (!user?.isAdmin && user) {
         setAllocationUsers([{
           id: user.id,
-          payroll_no: "",
+          email: "",
           member_name: user.name,
           department: "",
           office_location: "",
@@ -1000,7 +1064,7 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
         const users = await apiFetchAllUsers(token);
         setAllocationUsers(users.map((u: any) => ({
           id: u.id,
-          payroll_no: u.payroll_no || "-",
+          email: u.email || "-",
           member_name: u.name,
           department: u.department || "-",
           office_location: u.county || "-",
@@ -1116,16 +1180,36 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
                 className="w-full max-w-xs border border-red-200 focus:ring-2 focus:ring-red-200 rounded-lg shadow-sm"
               />
             </div>
-            <ItemsSection
-              items={items}
-              setEditingItem={setEditingItem}
-              setItemModalOpen={setItemModalOpen}
-              handleEdit={handleEditItem}
-              openDeleteModal={handleDeleteItem}
-              openDetailModal={openDetailModal}
-              onAllocate={handleOpenAllocate}
-              isAdmin={user?.isAdmin || false}
-            />
+            <div className="space-y-4">
+              <ItemsSection
+                items={items}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={(newPage: number) => {
+                  if (newPage >= 1 && newPage <= totalPages) {
+                    fetchItems(newPage, searchTerm);
+                  }
+                }}
+                setEditingItem={setEditingItem}
+                setItemModalOpen={setItemModalOpen}
+                handleEdit={handleEditItem}
+                openDeleteModal={(item) => {
+                  setItemToDelete(item);
+                  setDeleteItemModalOpen(true);
+                }}
+                openDetailModal={(item) => {
+                  setDetailItem(item);
+                  setDetailModalOpen(true);
+                }}
+                onAllocate={handleOpenAllocate}
+                isAdmin={user?.isAdmin || false}
+              />
+              {itemListLoading && (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                </div>
+              )}
+            </div>
           </div>
         )
       case "members":
@@ -1156,7 +1240,8 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
                 apiFetchAllUsers(token).then(users => {
                   setMembers(users.map((u: any) => ({
                     id: u.id,
-                    payroll_no: u.payroll_no || "-",
+                    email: u.email,
+                    phone: u.phone,
                     member_name: u.name,
                     department: u.department || "-",
                     office_location: u.county || "-",
@@ -1299,7 +1384,8 @@ export default function InventoryDashboard({ onLogout, initialPage }: InventoryD
                     Profile
                   </Link>
                 </div>
-                <p className="text-xs lg:text-sm text-red-200">{user && user.isAdmin ? "Admin" : "User"}</p>
+                <p className="text-xs lg:text-sm text-red-200">{user && user.isAdmin ? "Admin Portal" : "User Portal"}</p>
+                
               </div>
             </div>
             <Bell className="w-5 h-5 text-red-200" />

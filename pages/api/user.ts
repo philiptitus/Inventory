@@ -137,14 +137,22 @@ export default async function handler(
       return;
     }
 
-    const { name, phone, password, payroll_no, department, county } = req.body;
-    const data: Partial<User> = {};
+    const { name, phone, password, payroll_no, departmentId, county } = req.body;
+    const data: any = {};
 
     if (name) data.name = name;
     if (phone) data.phone = phone;
     if (password) data.password = await bcrypt.hash(password, 10);
     if (payroll_no) data.payroll_no = payroll_no;
-    if (department) data.department = department;
+    if (departmentId) {
+      data.department = {
+        connect: { id: parseInt(departmentId) }
+      };
+    } else if (departmentId === null) {
+      data.department = {
+        disconnect: true
+      };
+    }
     if (county) data.county = county;
 
     try {
@@ -184,7 +192,46 @@ export default async function handler(
     }
 
     try {
-      await prisma.user.delete({ where: { id: payload.userId } });
+      // Check for active allocations (case-sensitive check)
+      const activeAllocations = await prisma.allocation.findFirst({
+        where: {
+          userId: payload.userId,
+          status: 'active'  // Changed from 'ACTIVE' to 'active' to match schema
+        }
+      });
+
+      if (activeAllocations) {
+        res.status(400).json({ error: 'Cannot delete account with active allocations. Please return all allocated items first.' });
+        return;
+      }
+
+      // Start a transaction to ensure data consistency
+      await prisma.$transaction([
+        // Delete related records
+        prisma.repairRequest.deleteMany({
+          where: { OR: [
+            { requestedById: payload.userId },
+            { completedById: payload.userId }
+          ]}
+        }),
+        prisma.returnRequest.deleteMany({
+          where: { OR: [
+            { requestedById: payload.userId },
+            { processedById: payload.userId }
+          ]}
+        }),
+        prisma.allocation.deleteMany({
+          where: { userId: payload.userId }
+        }),
+        prisma.item.deleteMany({
+          where: { userId: payload.userId }
+        }),
+        // Finally delete the user
+        prisma.user.delete({
+          where: { id: payload.userId }
+        })
+      ]);
+
       res.status(200).json({ message: 'User deleted successfully' });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to delete user', details: error.message });

@@ -1,6 +1,6 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Eye, Edit, Trash2 } from "lucide-react";
+import { Plus, Eye, Edit } from "lucide-react";
 import React, { useState } from "react";
 import MemberModal from "../modals/MemberModal";
 import { useToast } from "@/hooks/use-toast";
@@ -8,9 +8,10 @@ import { apiAdminAddUser, apiFetchAllUsers } from "@/lib/userApi";
 
 interface Member {
   id: number;
-  payroll_no: string;
+  email: string;
   member_name: string;
   department: string;
+  phone: string;
 }
 
 interface Department {
@@ -59,7 +60,7 @@ const MembersSection: React.FC<MembersSectionProps> = ({
         name: data.member_name,
         email: `${data.payroll_no}@placeholder.com`, // Placeholder, adjust as needed
         password: data.payroll_no + "_pass", // Placeholder, adjust as needed
-        phone: data.payroll_no,
+        phone: data.phone,
         isAdmin: false,
         departmentId: departments.find(d => d.Dep_name === data.department)?.id,
         county: data.county,
@@ -80,10 +81,10 @@ const MembersSection: React.FC<MembersSectionProps> = ({
       <CardHeader>
         <div className="flex items-center justify-between w-full">
           <CardTitle className="text-[#1c1b1f] text-lg capitalize">members</CardTitle>
-          <Button onClick={() => setModalOpen(true)} className="flex items-center gap-2 bg-[#0a9b21] hover:bg-[#0c1cab] text-white shadow-md px-4 py-2 rounded-lg">
+          {/* <Button onClick={() => setModalOpen(true)} className="flex items-center gap-2 bg-[#0a9b21] hover:bg-[#0c1cab] text-white shadow-md px-4 py-2 rounded-lg">
             <Plus className="w-4 h-4" />
             New Member
-          </Button>
+          </Button> */}
         </div>
       </CardHeader>
       <CardContent>
@@ -102,39 +103,25 @@ const MembersSection: React.FC<MembersSectionProps> = ({
             <thead>
               <tr className="border-b border-[#d9d9d9]">
                 <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Member Name</th>
+                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Email</th>
                 <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Department</th>
-                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Actions</th>
+                <th className="text-left py-3 px-4 font-medium text-red-200 text-sm">Phone</th>
               </tr>
             </thead>
             <tbody>
               {members.length === 0 ? (
-                <tr><td colSpan={3} className="py-8 text-center text-red-300">No data found.</td></tr>
+                <tr><td colSpan={4} className="py-8 text-center text-red-300">No data found.</td></tr>
               ) : members.map((member) => (
-                <tr key={member.id} className="border-b border-[#d9d9d9]">
+                <tr key={member.id} className="border-b border-[#d9d9d9] hover:bg-gray-50">
                   <td className="py-3 px-4 text-sm">{member.member_name}</td>
-                  <td className="py-3 px-4 text-sm">{
-                    typeof member.department === 'object' && member.department !== null
+                  <td className="py-3 px-4 text-sm">{member.email || "-"}</td>
+                  <td className="py-3 px-4 text-sm">
+                    {typeof member.department === 'object' && member.department !== null
                       ? member.department.Dep_name
                       : member.department || "-"
-                  }</td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Eye className="w-3 h-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => handleEdit("members", member)}>
-                        <Edit className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-[#be0606] hover:text-[#be0606]"
-                        onClick={() => openDeleteModal("members", member.id, member.member_name)}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
+                  }
                   </td>
+                  <td className="py-3 px-4 text-sm">{member.phone}</td>
                 </tr>
               ))}
             </tbody>

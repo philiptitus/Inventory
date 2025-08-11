@@ -14,6 +14,9 @@ interface Item {
 
 interface ItemsSectionProps {
   items: Item[];
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
   setEditingItem: (item: Item | undefined) => void;
   setItemModalOpen: (open: boolean) => void;
   handleEdit: (item: Item) => void;
@@ -25,6 +28,9 @@ interface ItemsSectionProps {
 
 const ItemsSection: React.FC<ItemsSectionProps> = ({
   items,
+  currentPage,
+  totalPages,
+  onPageChange,
   setEditingItem,
   setItemModalOpen,
   handleEdit,
@@ -109,6 +115,29 @@ const ItemsSection: React.FC<ItemsSectionProps> = ({
             ))}
           </tbody>
         </table>
+        {totalPages > 1 && (
+          <div className="flex justify-between items-center mt-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onPageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-gray-600">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onPageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </div>
     </CardContent>
   </Card>

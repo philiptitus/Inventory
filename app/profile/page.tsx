@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { Home, Package, ShoppingCart, CreditCard, BarChart3, Truck, Users, Settings, LogOut, Menu, Mail, Phone, MapPin, AlertTriangle, X } from "lucide-react";
+import { Home, Package, ShoppingCart, CreditCard, BarChart3, Truck, Users, Settings, LogOut, Menu, Mail, Phone, MapPin, AlertTriangle, X, Building } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
 import debounce from 'lodash/debounce';
@@ -48,12 +48,17 @@ export default function ProfilePage() {
   };
 
   // Form state
-  const [form, setForm] = useState({ name: "", phone: "", county: "" });
+  const [form, setForm] = useState({ name: "", phone: "", county: "", departmentId: "" });
   const [countySearch, setCountySearch] = useState("");
   const [countyResults, setCountyResults] = useState<string[]>([]);
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [departmentSearch, setDepartmentSearch] = useState("");
+  const [departmentResults, setDepartmentResults] = useState<{id: number, name: string}[]>([]);
+  const [showCountyDropdown, setShowCountyDropdown] = useState(false);
+  const [showDepartmentDropdown, setShowDepartmentDropdown] = useState(false);
   const [countyError, setCountyError] = useState("");
+  const [departmentError, setDepartmentError] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const departmentDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -102,11 +107,38 @@ export default function ProfilePage() {
       const res = await fetch(`/api/county?search=${encodeURIComponent(query)}`);
       if (res.ok) {
         const data = await res.json();
-        setCountyResults(data.counties.map((c: any) => c.name));
+        setCountyResults(data.counties.map((c: any) => c.county_name));
       }
     } catch (error) {
       console.error('Error searching counties:', error);
       setCountyResults([]);
+    }
+  }, 300), []);
+
+  // Debounced department search
+  const searchDepartments = useCallback(debounce(async (query: string) => {
+    if (!query.trim()) {
+      setDepartmentResults([]);
+      return;
+    }
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem("token") : null;
+      if (!token) return;
+      
+      const res = await fetch(`/api/department?search=${encodeURIComponent(query)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setDepartmentResults(data.departments.map((d: any) => ({
+          id: d.id,
+          name: d.Dep_name
+        })));
+      }
+    } catch (error) {
+      console.error('Error searching departments:', error);
+      setDepartmentResults([]);
     }
   }, 300), []);
 
@@ -115,22 +147,41 @@ export default function ProfilePage() {
     const value = e.target.value;
     setCountySearch(value);
     searchCounties(value);
-    setShowDropdown(!!value.trim());
+    setShowCountyDropdown(!!value.trim());
+  };
+
+  // Handle department search input change
+  const handleDepartmentSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setDepartmentSearch(value);
+    searchDepartments(value);
+    setShowDepartmentDropdown(!!value.trim());
   };
 
   // Handle county selection from dropdown
   const handleCountySelect = (countyName: string) => {
     setForm({ ...form, county: countyName });
     setCountySearch(countyName);
-    setShowDropdown(false);
+    setShowCountyDropdown(false);
     setCountyError("");
   };
 
-  // Handle click outside to close dropdown
+  // Handle department selection from dropdown
+  const handleDepartmentSelect = (department: {id: number, name: string}) => {
+    setForm({ ...form, departmentId: department.id.toString() });
+    setDepartmentSearch(department.name);
+    setShowDepartmentDropdown(false);
+    setDepartmentError("");
+  };
+
+  // Handle click outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
+        setShowCountyDropdown(false);
+      }
+      if (departmentDropdownRef.current && !departmentDropdownRef.current.contains(event.target as Node)) {
+        setShowDepartmentDropdown(false);
       }
     };
 
@@ -140,20 +191,37 @@ export default function ProfilePage() {
     };
   }, []);
 
-  // Initialize county search when entering edit mode
+  // Initialize form fields when entering edit mode or when user data loads
   useEffect(() => {
-    if (editMode && form.county) {
-      setCountySearch(form.county);
+    if (editMode && user) {
+      if (user.county) {
+        setCountySearch(user.county);
+      }
+      if (user.department) {
+        setForm(prev => ({ ...prev, departmentId: user.department.id.toString() }));
+        setDepartmentSearch(user.department.Dep_name);
+      }
     }
-  }, [editMode, form.county]);
+  }, [editMode, user]);
 
   const validateForm = () => {
+    let isValid = true;
+    
     if (!form.county.trim()) {
       setCountyError("Please select a county from the dropdown");
-      return false;
+      isValid = false;
+    } else {
+      setCountyError("");
     }
-    setCountyError("");
-    return true;
+    
+    if (!form.departmentId) {
+      setDepartmentError("Please select a department from the dropdown");
+      isValid = false;
+    } else {
+      setDepartmentError("");
+    }
+    
+    return isValid;
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -335,12 +403,12 @@ export default function ProfilePage() {
                     {countyError && (
                       <p className="text-red-500 text-xs mt-1 ml-1">{countyError}</p>
                     )}
-                    {showDropdown && countyResults.length > 0 && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-300 rounded-md shadow-xl max-h-60 overflow-auto">
+                    {showCountyDropdown && countyResults.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-red-600 border-2 border-red-700 rounded-md shadow-xl max-h-60 overflow-auto">
                         {countyResults.map((countyName) => (
                           <div
                             key={countyName}
-                            className="px-4 py-3 hover:bg-gray-100 cursor-pointer text-gray-900 text-base font-semibold"
+                            className="px-4 py-3 hover:bg-red-700 cursor-pointer text-white text-base font-semibold"
                             onClick={() => handleCountySelect(countyName)}
                           >
                             {countyName}
@@ -349,6 +417,52 @@ export default function ProfilePage() {
                       </div>
                     )}
                   </div>
+                  
+                  {/* Department Search */}
+                  <div className="relative w-full mt-4" ref={departmentDropdownRef}>
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 z-10">
+                      <Building className="w-5 h-5 text-[#8b8989]" />
+                    </div>
+                    <input
+                      type="text"
+                      value={departmentSearch}
+                      onChange={handleDepartmentSearchChange}
+                      onFocus={() => setShowDepartmentDropdown(true)}
+                      placeholder="Search and select your department"
+                      className={`w-full pl-12 h-12 border-[#d9d9d9] focus:border-[#4a4a4a] focus:ring-[#4a4a4a] bg-white/80 shadow-sm rounded-lg pr-10 ${departmentError ? 'border-red-500' : ''}`}
+                    />
+                    {departmentSearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDepartmentSearch("");
+                          setForm({ ...form, departmentId: "" });
+                          setDepartmentResults([]);
+                          setShowDepartmentDropdown(false);
+                        }}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        ×
+                      </button>
+                    )}
+                    {departmentError && (
+                      <p className="text-red-500 text-xs mt-1 ml-1">{departmentError}</p>
+                    )}
+                    {showDepartmentDropdown && departmentResults.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-red-600 border-2 border-red-700 rounded-md shadow-xl max-h-60 overflow-auto">
+                        {departmentResults.map((dept) => (
+                          <div
+                            key={dept.id}
+                            className="px-4 py-3 hover:bg-red-700 cursor-pointer text-white text-base font-semibold"
+                            onClick={() => handleDepartmentSelect(dept)}
+                          >
+                            {dept.name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
                   <div className="flex gap-2 w-full justify-center mt-2">
                     <button
                       type="button"
@@ -389,8 +503,12 @@ export default function ProfilePage() {
                       <span>{user?.phone}</span>
                     </div>
                     <div className="flex items-center justify-center gap-2 text-gray-600">
-                          <MapPin className="w-5 h-5 text-red-400" />
+                      <MapPin className="w-5 h-5 text-red-400" />
                       <span>{user?.county}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 text-gray-600">
+                      <Building className="w-5 h-5 text-red-400" />
+                      <span>{user?.department?.Dep_name || 'No department assigned'}</span>
                     </div>
                   </div>
                   <button

@@ -182,16 +182,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     return;
   } else if (req.method === 'DELETE') {
-    // Delete inventory item
+    // Delete inventory item (admin only)
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'Missing required field: id' });
+    
     try {
-      // Only allow owner to delete
-      const item = await prisma.item.findUnique({ where: { id: Number(id) } });
+      // Check if user is admin
+      if (!payload.isAdmin) {
+        return res.status(403).json({ error: 'Forbidden: Only administrators can delete items' });
+      }
+
+      // Check if item exists and get related data
+      const item = await prisma.item.findUnique({ 
+        where: { id: Number(id) },
+        include: {
+          allocations: {
+            where: { status: 'active' },
+            include: { 
+              user: { select: { name: true } },
+              repairRequests: true,
+              returnRequests: true
+            }
+          }
+        }
+      });
+      
       if (!item) return res.status(404).json({ error: 'Item not found' });
-      if (item.userId !== payload.userId) return res.status(403).json({ error: 'Forbidden: not your inventory' });
-      await prisma.item.delete({ where: { id: Number(id) } });
-      res.status(200).json({ message: 'Item deleted successfully' });
+
+      // Check for active allocations
+      if (item.allocations && item.allocations.length > 0) {
+        const allocatedTo = item.allocations.map(a => a.user.name).join(', ');
+        return res.status(400).json({ 
+          error: 'Cannot delete item with active allocations',
+          details: `This item is currently allocated to: ${allocatedTo}`
+        });
+      }
+
+      // Proceed with deletion in a transaction to handle all related records
+      await prisma.$transaction([
+        // Delete related repair requests
+        prisma.repairRequest.deleteMany({
+          where: { allocation: { itemId: Number(id) } }
+        }),
+        // Delete related return requests
+        prisma.returnRequest.deleteMany({
+          where: { allocation: { itemId: Number(id) } }
+        }),
+        // Delete allocations
+        prisma.allocation.deleteMany({
+          where: { itemId: Number(id) }
+        }),
+        // Finally delete the item
+        prisma.item.delete({ 
+          where: { id: Number(id) } 
+        })
+      ]);
+      
+      res.status(200).json({ message: 'Item and all related records deleted successfully' });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to delete inventory item', details: error.message });
     }
